@@ -66,6 +66,7 @@ func _build_stats_display() -> void:
 		stats_label.add_theme_font_size_override("font_size", 13)
 		stats_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.72))
 		stats_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		stats_label.custom_minimum_size = Vector2(340, 0)
 		# 插入在 Title 之后，按钮之前
 		var title_idx: int = 0
 		for i in vbox.get_child_count():
@@ -83,6 +84,7 @@ func _build_stats_display() -> void:
 		unlock_label.add_theme_font_size_override("font_size", 12)
 		unlock_label.add_theme_color_override("font_color", Color(0.85, 0.9, 1.0, 0.65))
 		unlock_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		unlock_label.custom_minimum_size = Vector2(340, 0)
 		vbox.add_child(unlock_label)
 		# 放在 Stats 之后
 		if stats_label:
@@ -112,18 +114,26 @@ func _refresh_stats_display() -> void:
 	var totals: Dictionary = SaveData.get_totals()
 	var bt: float = float(best.get("time", 0.0))
 	if bt > 0.01:
-		stats_label.text = "最佳 %d:%02d · 击杀 %d · 等级 %d · 累计击杀 %d" % [floori(bt / 60.0), int(bt) % 60, int(best.get("kills", 0)), int(best.get("level", 1)), int(totals.get("total_kills", 0))]
+		stats_label.text = "最佳 %d:%02d  ·  击杀 %d  ·  等级 %d" % [floori(bt / 60.0), int(bt) % 60, int(best.get("kills", 0)), int(best.get("level", 1))]
 	else:
-		stats_label.text = "累计击杀 %d · 局数 %d — 存活 90s 解锁寒霜，40 击杀解锁回旋斧" % [int(totals.get("total_kills", 0)), int(totals.get("total_games", 0))]
+		stats_label.text = "累计击杀 %d  ·  局数 %d" % [int(totals.get("total_kills", 0)), int(totals.get("total_games", 0))]
 	if unlock_label:
 		var prog: Dictionary = SaveData.get_unlock_progress()
-		var parts: Array = []
+		var locked: Array = []
+		var unlocked_n: Array = []
 		for uid in prog.keys():
 			var info: Dictionary = prog[uid] as Dictionary
-			var unlocked: bool = bool(info.get("unlocked", false))
 			var name: String = str(info.get("name", uid))
-			parts.append("%s[%s]" % [name, "✓" if unlocked else "✗"])
-		unlock_label.text = "解锁: " + " · ".join(parts) if not parts.is_empty() else ""
+			if bool(info.get("unlocked", false)):
+				unlocked_n.append(name)
+			else:
+				locked.append(name)
+		if not unlocked_n.is_empty() and locked.is_empty():
+			unlock_label.text = "已解锁 " + " · ".join(unlocked_n)
+		elif not locked.is_empty():
+			unlock_label.text = "未解锁  " + " · ".join(locked)
+		else:
+			unlock_label.text = ""
 
 
 func _rebuild_title_layout() -> void:
@@ -139,9 +149,12 @@ func _rebuild_title_layout() -> void:
 	var vbox: VBoxContainer = get_node_or_null("CenterContainer/VBoxContainer") as VBoxContainer
 	if vbox == null:
 		return
+	vbox.custom_minimum_size = Vector2(380, 0)
+	vbox.add_theme_constant_override("separation", 10)
 	var icon_node: Control = vbox.get_node_or_null("Icon") as Control
 	if icon_node:
 		icon_node.visible = false
+		icon_node.custom_minimum_size = Vector2(0, 0)
 	var title: Label = vbox.get_node_or_null("Title") as Label
 	if title:
 		title.add_theme_font_size_override("font_size", 56)
@@ -152,23 +165,45 @@ func _rebuild_title_layout() -> void:
 	if subtitle:
 		subtitle.text = "活下去，成为最后一人"
 		subtitle.add_theme_color_override("font_color", Color(1, 0.93, 0.8, 0.88))
+	var divider: Control = vbox.get_node_or_null("Divider") as Control
+	if divider:
+		divider.visible = false
+	var spacer: Control = vbox.get_node_or_null("Spacer1") as Control
+	if spacer:
+		spacer.custom_minimum_size = Vector2(0, 8)
 	var start_btn: Button = vbox.get_node_or_null("StartButton") as Button
 	var settings_btn: Button = vbox.get_node_or_null("SettingsButton") as Button
 	var exit_btn: Button = vbox.get_node_or_null("ExitButton") as Button
 	if start_btn:
-		start_btn.custom_minimum_size = Vector2(280, 60)
+		start_btn.text = "开始游戏"
+		start_btn.custom_minimum_size = Vector2(280, 56)
 		UiStyle.apply_button(start_btn, true)
 	if settings_btn:
-		settings_btn.custom_minimum_size = Vector2(280, 50)
+		settings_btn.text = "设置"
+		settings_btn.custom_minimum_size = Vector2(280, 48)
 		UiStyle.apply_button(settings_btn, false)
 	if exit_btn:
-		exit_btn.custom_minimum_size = Vector2(280, 50)
+		exit_btn.text = "退出游戏"
+		exit_btn.custom_minimum_size = Vector2(280, 48)
 		UiStyle.apply_button(exit_btn, false)
 	if stats_label:
 		stats_label.add_theme_color_override("font_color", Color(1, 0.95, 0.85, 0.82))
-		stats_label.add_theme_font_size_override("font_size", 13)
+		stats_label.add_theme_font_size_override("font_size", 14)
+		stats_label.custom_minimum_size = Vector2(340, 0)
 	if unlock_label:
 		unlock_label.add_theme_color_override("font_color", Color(1, 0.9, 0.7, 0.7))
+		unlock_label.custom_minimum_size = Vector2(340, 0)
+	# Title → subtitle → stats → unlock → spacer → buttons
+	var order: Array = ["Title", "Subtitle", "StatsLabel", "UnlockLabel", "Spacer1", "StartButton", "SettingsButton", "ExitButton", "Tip"]
+	var slot := 0
+	if icon_node:
+		vbox.move_child(icon_node, 0)
+		slot = 1
+	for n in order:
+		var child: Node = vbox.get_node_or_null(n)
+		if child:
+			vbox.move_child(child, slot)
+			slot += 1
 	var root := Control.new()
 	root.name = "TitleRoot"
 	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
