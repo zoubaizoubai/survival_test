@@ -108,6 +108,7 @@ func _run_all() -> void:
 	await _test_weapon_evolution_and_builds()
 	await _test_stats_and_save()
 	await _test_visual_audio_accessibility()
+	await _test_export_and_version()
 	# 确保所有异步清理完成
 	await process_frame
 	await process_frame
@@ -1496,7 +1497,81 @@ func _test_visual_audio_accessibility() -> void:
 	await process_frame
 
 
+func _test_export_and_version() -> void:
+	print("\n[SMOKE] 导出、版本与 CI")
+	# 版本可追踪：VERSION 与 project.godot 一致
+	var version_file: String = ""
+	var fa: FileAccess = FileAccess.open("res://VERSION", FileAccess.READ)
+	if fa != null:
+		version_file = fa.get_as_text().strip_edges()
+		fa.close()
+	_assert(not version_file.is_empty(), "VERSION 文件存在", "缺失")
+	var proj_version: String = str(ProjectSettings.get_setting("application/config/version", ""))
+	if proj_version.is_empty():
+		# 回退读取 project.godot 文本
+		var pf: FileAccess = FileAccess.open("res://project.godot", FileAccess.READ)
+		if pf != null:
+			var txt: String = pf.get_as_text()
+			pf.close()
+			for line in txt.split("\n"):
+				if line.contains("config/version"):
+					proj_version = line.split("=")[1].strip_edges().strip_edges().replace('"', "")
+					break
+	_assert(not proj_version.is_empty(), "project.godot 版本存在", "空")
+	_assert(version_file == proj_version, "VERSION 与 project.godot 一致 (%s)" % version_file, "VERSION=%s project=%s" % [version_file, proj_version])
+	# CHANGELOG 可追踪
+	var changelog_exists: bool = FileAccess.file_exists("res://CHANGELOG.md")
+	_assert(changelog_exists, "CHANGELOG.md 存在", "缺失")
+	if changelog_exists:
+		var cf: FileAccess = FileAccess.open("res://CHANGELOG.md", FileAccess.READ)
+		if cf != null:
+			var txt2: String = cf.get_as_text()
+			cf.close()
+			_assert(txt2.contains(version_file), "CHANGELOG 含当前版本", "未含 %s" % version_file)
+	# 导出预设：确定首发平台与最低环境
+	_assert(FileAccess.file_exists("res://export_presets.cfg"), "export_presets.cfg 存在", "缺失")
+	var ec: FileAccess = FileAccess.open("res://export_presets.cfg", FileAccess.READ)
+	var has_web: bool = false
+	var has_linux: bool = false
+	if ec != null:
+		var txt3: String = ec.get_as_text()
+		ec.close()
+		has_web = txt3.contains('name="Web"') and txt3.contains('platform="Web"')
+		has_linux = txt3.contains('name="Linux/X11"')
+	_assert(has_web, "Web 首发预设存在", "缺失 Web")
+	_assert(has_linux, "Linux 预设存在（本地验证）", "缺失 Linux")
+	# CI：.github/workflows/ci.yml 自动执行无头测试并校验导出
+	_assert(FileAccess.file_exists("res://.github/workflows/ci.yml"), "CI 工作流存在", "缺失 ci.yml")
+	var ci_ok: bool = false
+	var ci_file: FileAccess = FileAccess.open("res://.github/workflows/ci.yml", FileAccess.READ)
+	if ci_file != null:
+		var citxt: String = ci_file.get_as_text()
+		ci_file.close()
+		ci_ok = citxt.contains("run_tests.gd") and citxt.contains("export_presets.cfg") and citxt.contains("export-release")
+	_assert(ci_ok, "CI 含测试与导出校验", "CI 内容不完整")
+	# 干净克隆可按文档生成构建：检查 docs/BUILD.md 与 Makefile 目标
+	_assert(FileAccess.file_exists("res://docs/BUILD.md"), "docs/BUILD.md 存在", "缺失")
+	_assert(FileAccess.file_exists("res://Makefile") or FileAccess.file_exists("res://makefile"), "Makefile 存在", "缺失")
+	var mf: FileAccess = FileAccess.open("res://Makefile", FileAccess.READ)
+	var has_targets: bool = false
+	if mf != null:
+		var mtxt: String = mf.get_as_text()
+		mf.close()
+		has_targets = mtxt.contains("test:") and mtxt.contains("export-web") and mtxt.contains("verify")
+	_assert(has_targets, "Makefile 含 test/verify/export", "缺失目标")
+	# 发布检查：docs/RELEASE_CHECKLIST 覆盖输入、存档、性能、流程
+	_assert(FileAccess.file_exists("res://docs/RELEASE_CHECKLIST.md"), "RELEASE_CHECKLIST 存在", "缺失")
+	var rc_ok: bool = false
+	var rcf: FileAccess = FileAccess.open("res://docs/RELEASE_CHECKLIST.md", FileAccess.READ)
+	if rcf != null:
+		var rctxt: String = rcf.get_as_text()
+		rcf.close()
+		rc_ok = rctxt.contains("输入") and rctxt.contains("存档") and rctxt.contains("性能") and rctxt.contains("流程")
+	_assert(rc_ok, "发布检查覆盖输入/存档/性能/流程", "不完整")
+
+
 func _test_lightning_range() -> void:
+
 
 
 	print("\n[SMOKE] 雷霆范围回归")

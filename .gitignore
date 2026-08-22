@@ -11,3 +11,5 @@ addons/godot_ai
 .beads-credential-key
 .beads/proxieddb/
 *.gate.lock*
+build/
+.beads.backup-pre-recovery/
