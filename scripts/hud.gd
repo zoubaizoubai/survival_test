@@ -1,5 +1,7 @@
 extends Control
 
+const Settings := preload("res://scripts/settings.gd")
+
 var game: Node2D
 var hp_fill: ColorRect
 var hp_label: Label
@@ -10,6 +12,9 @@ var kill_label: Label
 var low_overlay: ColorRect
 var pause_btn: Button
 var t := 0.0
+var boss_bar: ColorRect
+var boss_fill: ColorRect
+var boss_label: Label
 var _hp_bg: ColorRect
 var _xp_bar: ColorRect
 
@@ -100,6 +105,26 @@ func _ready() -> void:
 	lv_label.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
 	add_child(lv_label)
 
+	# Boss 血条（仅 Boss 存在时可见）
+	boss_bar = ColorRect.new()
+	boss_bar.name = "BossBar"
+	boss_bar.color = Color(0, 0, 0, 0.55)
+	boss_bar.size = Vector2(520, 14)
+	boss_bar.visible = false
+	boss_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(boss_bar)
+	boss_fill = ColorRect.new()
+	boss_fill.color = Color(0.9, 0.25, 0.3)
+	boss_fill.size = Vector2(516, 10)
+	boss_fill.position = Vector2(2, 2)
+	boss_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	boss_bar.add_child(boss_fill)
+	boss_label = _make_label("BOSS", 11, Color(1, 1, 1, 0.9))
+	boss_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	boss_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	boss_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	boss_bar.add_child(boss_label)
+
 	get_viewport().size_changed.connect(_update_layout)
 	_update_layout()
 
@@ -141,6 +166,9 @@ func _update_layout() -> void:
 		# 超宽屏底部边距加大避免与手势条重叠
 		if is_wide:
 			_xp_bar.offset_top = -18
+	# Boss 条居中于时间标签下方
+	if boss_bar:
+		boss_bar.position = Vector2((vp.x - boss_bar.size.x) * 0.5, 52)
 	# 时间标签保持居中，不受宽高比影响
 	if time_label:
 		var w: float = 90.0
@@ -174,7 +202,23 @@ func _process(delta: float) -> void:
 	var secs := int(game.elapsed)
 	time_label.text = "%d:%02d" % [floori(game.elapsed / 60.0), secs % 60]
 	kill_label.text = "击杀 %d" % game.kills
+	# 低血量遮罩：受 flash 开关约束，不过度遮挡
+	var flash_on: bool = Settings.is_flash_enabled()
 	if pct < 0.3 and not pl.dead:
-		low_overlay.color.a = 0.09 + 0.05 * sin(t * 6.0)
+		low_overlay.color.a = (0.09 + 0.05 * sin(t * 6.0)) if flash_on else 0.07
 	else:
 		low_overlay.color.a = 0.0
+	# Boss 血条：独立生命与阶段反馈
+	var boss: Node = null
+	for e in game.get_enemies():
+		if e.kind == "boss" and not e.dead:
+			boss = e
+			break
+	if boss != null:
+		boss_bar.visible = true
+		var bpct: float = clampf(float(boss.hp) / float(boss.max_hp), 0.0, 1.0)
+		boss_fill.size.x = 516.0 * bpct
+		boss_fill.color = Color(0.9, 0.25, 0.3) if bpct > 0.5 else (Color(0.95, 0.55, 0.2) if int(boss.boss_phase) == 1 else Color(0.98, 0.3, 0.32))
+		boss_label.text = "BOSS %d%% %s" % [int(bpct * 100), "· 狂暴" if int(boss.boss_phase) == 2 else ""]
+	else:
+		boss_bar.visible = false

@@ -78,3 +78,7 @@ pointing/emulate_touch_from_mouse=true
 
 rendering_device/driver.windows="d3d12"
 renderer/rendering_method="mobile"
+
+[audio]
+
+buses/default_bus_layout="res://audio_bus_layout.tres"

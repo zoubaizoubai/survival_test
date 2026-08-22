@@ -6,6 +6,7 @@ signal leveled_up
 signal died
 
 const ProjectileScript := preload("res://scripts/projectile.gd")
+const Settings := preload("res://scripts/settings.gd")
 
 const BASE_SPEED := 235.0
 const BASE_MAGNET := 95.0
@@ -41,7 +42,11 @@ func _process(delta: float) -> void:
 	invuln = maxf(invuln - delta, 0.0)
 	_move(delta)
 	_update_weapons(delta)
-	modulate.a = 1.0 if invuln <= 0.0 else 0.55 + 0.45 * absf(sin(time_alive * 30.0))
+	var flash_on: bool = Settings.is_flash_enabled()
+	if invuln <= 0.0:
+		modulate.a = 1.0
+	else:
+		modulate.a = 0.55 + 0.45 * absf(sin(time_alive * 30.0)) if flash_on else 0.78
 	queue_redraw()
 
 
@@ -319,6 +324,7 @@ func _orbit_damage(delta: float) -> void:
 
 
 func _draw() -> void:
+	var flash_on2: bool = Settings.is_flash_enabled()
 	# frost 预警环（与 aura 叠加）
 	if weapons.has("frost") or weapons.has("frost_evo"):
 		var fid: String = "frost" if weapons.has("frost") else "frost_evo"
@@ -343,5 +349,5 @@ func _draw() -> void:
 	var tip := facing * 21.0
 	draw_colored_polygon(PackedVector2Array([tip, facing.rotated(0.5) * 12.0, facing.rotated(-0.5) * 12.0]), Color(0.8, 0.97, 1.0))
 	if hp < max_hp * 0.3 and not dead:
-		var a := 0.25 + 0.2 * sin(time_alive * 8.0)
+		var a := (0.25 + 0.2 * sin(time_alive * 8.0)) if flash_on2 else 0.16
 		draw_arc(Vector2.ZERO, 19.0, 0, TAU, 32, Color(1.0, 0.3, 0.3, a), 2.5, true)

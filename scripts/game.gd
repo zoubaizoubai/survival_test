@@ -10,6 +10,7 @@ const HudScript := preload("res://scripts/hud.gd")
 const MenusScript := preload("res://scripts/menus.gd")
 const JoystickScript := preload("res://scripts/joystick.gd")
 const SfxScript := preload("res://scripts/sfx.gd")
+const MusicScript := preload("res://scripts/music.gd")
 const SaveData := preload("res://scripts/save_data.gd")
 
 const GameData := preload("res://scripts/game_data.gd")
@@ -46,6 +47,7 @@ var hud: Control
 var menus: Control
 var joystick: Control
 var sfx: Node
+var music: Node
 
 var elapsed := 0.0
 var kills := 0
@@ -93,6 +95,8 @@ func _ready() -> void:
 		_wave_idx += 1
 	sfx = SfxScript.new()
 	add_child(sfx)
+	music = MusicScript.new()
+	add_child(music)
 	world = Node2D.new()
 	world.name = "World"
 	add_child(world)

@@ -3,6 +3,7 @@ extends Node2D
 signal died(enemy)
 
 const GameData := preload("res://scripts/game_data.gd")
+const Settings := preload("res://scripts/settings.gd")
 
 # 保留内置默认值作为回退，实际数值由 data/balance.json 提供
 const STATS_FALLBACK := {
@@ -107,7 +108,9 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if dead:
 		return
-	flash = maxf(flash - delta * 6.0, 0.0)
+	var flash_enabled: bool = Settings.is_flash_enabled()
+	var flash_decay: float = 6.0 if flash_enabled else 9.0
+	flash = maxf(flash - delta * flash_decay, 0.0)
 	attack_cd -= delta
 	slow_t = maxf(slow_t - delta, 0.0)
 	if slow_t <= 0.0:
@@ -335,14 +338,14 @@ func apply_slow(factor: float, dur: float) -> void:
 	slow_factor = clampf(slow_factor, 0.15, 1.0)
 	slow_t = maxf(slow_t, dur)
 	# 视觉反馈：短暂闪蓝
-	flash = maxf(flash, 0.6)
+	flash = maxf(flash, 0.6 if Settings.is_flash_enabled() else 0.25)
 
 
 func take_hit(amount: float, kdir: Vector2 = Vector2.ZERO) -> void:
 	if dead:
 		return
 	hp -= amount
-	flash = 1.0
+	flash = 1.0 if Settings.is_flash_enabled() else 0.45
 	kb += kdir
 	game.spawn_damage_text(global_position, str(int(amount)), Color(1.0, 1.0, 0.85))
 	if hp <= 0.0:
@@ -390,18 +393,24 @@ func _draw() -> void:
 			var bob := sin(wob * 6.0 + wobble_seed) * 2.0
 			draw_circle(Vector2(0, bob + 2.0), radius, Color(col.r * 0.4, col.g * 0.4, col.b * 0.4, 0.35))
 			draw_circle(Vector2(0, bob), radius, col)
+			draw_arc(Vector2(0, bob), radius, 0, TAU, 16, Color(0, 0, 0, 0.45), 2.0, true)
 			draw_circle(Vector2(-radius * 0.3, bob - radius * 0.3), radius * 0.22, Color(1, 1, 1, 0.85))
 		"bat":
 			var flap := sin(wob * 12.0 + wobble_seed) * 0.5
+			var wing_col: Color = col.darkened(0.18)
 			draw_colored_polygon(PackedVector2Array([
 				Vector2(-radius * 1.9, -radius * flap), Vector2(-radius * 0.3, -radius * 0.2), Vector2(-radius * 1.4, radius * 0.9),
 			]), col)
+			draw_polyline(PackedVector2Array([Vector2(-radius * 1.9, -radius * flap), Vector2(-radius * 0.3, -radius * 0.2), Vector2(-radius * 1.4, radius * 0.9)]), Color(0,0,0,0.5), 2.0, true)
 			draw_colored_polygon(PackedVector2Array([
 				Vector2(radius * 1.9, -radius * flap), Vector2(radius * 0.3, -radius * 0.2), Vector2(radius * 1.4, radius * 0.9),
 			]), col)
+			draw_polyline(PackedVector2Array([Vector2(radius * 1.9, -radius * flap), Vector2(radius * 0.3, -radius * 0.2), Vector2(radius * 1.4, radius * 0.9)]), Color(0,0,0,0.5), 2.0, true)
 			draw_circle(Vector2.ZERO, radius * 0.85, col.darkened(0.25))
+			draw_circle(Vector2.ZERO, radius * 0.85, Color(0,0,0,0.45), false, 1.8)
 			draw_circle(Vector2.ZERO, radius * 0.4, Color(1, 1, 1, 0.9))
 		"brute":
+			draw_rect(Rect2(-radius - 1, -radius - 1, radius * 2 + 2, radius * 2 + 2), Color(0,0,0,0.5))
 			draw_rect(Rect2(-radius, -radius, radius * 2, radius * 2), col)
 			draw_rect(Rect2(-radius, -radius, radius * 2, radius * 2), col.darkened(0.45), false, 3.0)
 			draw_rect(Rect2(-radius * 0.4, -radius * 0.4, radius * 0.8, radius * 0.8), col.darkened(0.35))

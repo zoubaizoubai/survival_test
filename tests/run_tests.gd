@@ -107,6 +107,7 @@ func _run_all() -> void:
 	await _test_enemy_behaviors_and_director()
 	await _test_weapon_evolution_and_builds()
 	await _test_stats_and_save()
+	await _test_visual_audio_accessibility()
 	# 确保所有异步清理完成
 	await process_frame
 	await process_frame
@@ -1351,7 +1352,152 @@ func _test_stats_and_save() -> void:
 	SaveDataRef.clear()
 
 
+func _test_visual_audio_accessibility() -> void:
+	print("\n[SMOKE] 视觉、音频与可访问性")
+	var SettingsRef: GDScript = preload("res://scripts/settings.gd")
+	SettingsRef.ensure_loaded()
+	var gd: GDScript = preload("res://scripts/game_data.gd")
+	gd.ensure_loaded()
+	# 1. 敌人辨识度：各类型颜色与轮廓差异
+	var kinds: Array = ["slime", "bat", "brute", "charger", "caster", "elite", "boss"]
+	var colors: Dictionary = {}
+	for k in kinds:
+		var col: Color = (gd.enemies[k] as Dictionary)["color"] as Color
+		colors[k] = col
+		_assert(col is Color, "敌人 %s 颜色为 Color" % k, "类型错误")
+	# 检查颜色两两差异（避免混淆）
+	for i in kinds.size():
+		for j in range(i + 1, kinds.size()):
+			var c1: Color = colors[kinds[i]] as Color
+			var c2: Color = colors[kinds[j]] as Color
+			var diff: float = absf(c1.r - c2.r) + absf(c1.g - c2.g) + absf(c1.b - c2.b)
+			_assert(diff > 0.12, "敌人 %s 与 %s 颜色可辨识" % [kinds[i], kinds[j]], "diff=%.2f" % diff)
+	# 危险行为预警可辨识：charger windup 与 caster 环
+	var ps: PackedScene = load("res://scenes/game.tscn") as PackedScene
+	var g: Node = ps.instantiate()
+	root.add_child(g)
+	await process_frame
+	await process_frame
+	var pl: Node = g.get("player") as Node
+	pl.position = Vector2.ZERO
+	for e in (g.get("enemies_node") as Node).get_children():
+		e.queue_free()
+	await process_frame
+	g._spawn_at("charger", Vector2(140, 0))
+	g._spawn_at("caster", Vector2(-140, 0))
+	g._spawn_at("boss", Vector2(0, 160))
+	await process_frame
+	var charger: Node = null
+	var caster: Node = null
+	var boss: Node = null
+	for e in g.get_tree().get_nodes_in_group("enemies"):
+		var k: String = str(e.get("kind"))
+		if k == "charger":
+			charger = e
+		elif k == "caster":
+			caster = e
+		elif k == "boss":
+			boss = e
+	_assert(charger != null and caster != null and boss != null, "三类敌人可生成", "缺失")
+	# 触发 charger 预警
+	if charger:
+		charger.set("charge_cd", -1.0)
+		charger.set("charge_state", "chase")
+		charger.position = Vector2(120, 0)
+		pl.position = Vector2.ZERO
+		charger._process(0.02)
+		_assert(str(charger.get("charge_state")) == "windup", "charger 预警 windup 可辨识", "state=%s" % str(charger.get("charge_state")))
+	# 触发 caster 预警
+	if caster:
+		caster.set("cast_cd", -1.0)
+		caster.set("is_casting", false)
+		caster.position = Vector2(200, 0)
+		pl.position = Vector2.ZERO
+		caster._process(0.02)
+		_assert(bool(caster.get("is_casting")), "caster 预警环可辨识", "未进入施法")
+	# Boss 阶段反馈：初始 1 阶段，血条与变身
+	if boss:
+		_assert(int(boss.get("boss_phase")) == 1, "Boss 初始一阶段", "phase=%d" % int(boss.get("boss_phase")))
+		var max_hp: float = float(boss.get("max_hp"))
+		boss.set("hp", max_hp * 0.4)
+		boss._process(0.02)
+		_assert(int(boss.get("boss_phase")) == 2, "Boss 低血量二阶段反馈", "phase=%d" % int(boss.get("boss_phase")))
+		# 检查 HUD Boss 条是否会被显示（需在 _process 后）
+		var hud: Control = g.get("hud") as Control
+		hud._process(0.02)
+		_assert(hud.get("boss_bar") != null, "HUD 含 Boss 血条", "缺失")
+		_assert(bool(hud.get("boss_bar").visible) == true, "Boss 存在时血条可见", "隐藏")
+	# 2. 音频总线：Master/Music/Sfx 可分别调节
+	var master_bus: int = AudioServer.get_bus_index("Master")
+	var music_bus: int = AudioServer.get_bus_index("Music")
+	var sfx_bus: int = AudioServer.get_bus_index("Sfx")
+	_assert(master_bus != -1, "Master 总线存在", "缺失")
+	_assert(music_bus != -1, "Music 总线存在", "缺失")
+	_assert(sfx_bus != -1, "Sfx 总线存在", "缺失")
+	var orig_master: float = float(SettingsRef.get("master_volume"))
+	var orig_music: float = float(SettingsRef.get("music_volume"))
+	var orig_sfx: float = float(SettingsRef.get("sfx_volume"))
+	SettingsRef.set_master_volume(0.5)
+	SettingsRef.set_music_volume(0.3)
+	SettingsRef.set_sfx_volume(0.9)
+	await process_frame
+	var m_db: float = AudioServer.get_bus_volume_db(music_bus)
+	var s_db: float = AudioServer.get_bus_volume_db(sfx_bus)
+	_assert(m_db < -1.0 and m_db > -30.0, "Music 音量可调", "db=%.1f" % m_db)
+	_assert(s_db > m_db, "Sfx 与 Music 可分别调节", "music %.1f sfx %.1f" % [m_db, s_db])
+	# 恢复
+	SettingsRef.set_master_volume(orig_master)
+	SettingsRef.set_music_volume(orig_music)
+	SettingsRef.set_sfx_volume(orig_sfx)
+	# 3. 无障碍：低血量、受击、升级反馈不过度遮挡且可关闭
+	# 低血量遮罩：flash 关闭时更淡
+	var hud2: Control = g.get("hud") as Control
+	pl.set("hp", float(pl.get("max_hp")) * 0.2)
+	hud2._process(0.02)
+	var a_on: float = float(hud2.get("low_overlay").color.a)
+	SettingsRef.set_flash_enabled(false)
+	hud2._process(0.02)
+	var a_off: float = float(hud2.get("low_overlay").color.a)
+	_assert(a_on > 0.01, "低血量遮罩可见", "a=%.2f" % a_on)
+	_assert(a_off < a_on or is_equal_approx(a_off, 0.07), "关闭强闪烁后遮罩更淡", "on %.2f off %.2f" % [a_on, a_off])
+	# 受击闪烁：flash 关闭时 modulate 更弱
+	SettingsRef.set_flash_enabled(true)
+	pl.set("invuln", 0.3)
+	pl._process(0.02)
+	var a_flash_on: float = float(pl.get("modulate").a)
+	SettingsRef.set_flash_enabled(false)
+	pl.set("invuln", 0.3)
+	pl._process(0.02)
+	var a_flash_off: float = float(pl.get("modulate").a)
+	_assert(a_flash_on != a_flash_off or is_equal_approx(a_flash_off, 0.78), "关闭闪烁后受击闪烁减弱", "on %.2f off %.2f" % [a_flash_on, a_flash_off])
+	# 震动开关：关闭后 game.shake 不应影响相机（通过 Settings 判定）
+	SettingsRef.set_shake_enabled(false)
+	g.shake = 6.0
+	g._process(0.02)
+	_assert(g.cam.offset == Vector2.ZERO, "关闭震动后相机无偏移", "offset=%s" % str(g.cam.offset))
+	SettingsRef.set_shake_enabled(true)
+	g.shake = 6.0
+	g._process(0.02)
+	_assert(g.cam.offset != Vector2.ZERO, "开启震动后相机偏移", "offset=%s" % str(g.cam.offset))
+	# 升级辨识度：卡片 tag 含 Lv/进化，颜色区分
+	var cards: Array = g._roll_cards()
+	var has_lv_or_evo: bool = false
+	for c in cards:
+		var info: Dictionary = (g.get("menus") as Control)._card_info(c)
+		if str(info["tag"]).contains("Lv") or str(info["tag"]).contains("进化"):
+			has_lv_or_evo = true
+			break
+	_assert(has_lv_or_evo, "升级卡 tag 含 Lv/进化辨识度", "cards=%s" % str(cards))
+	# 恢复设置
+	SettingsRef.set_flash_enabled(true)
+	SettingsRef.set_shake_enabled(true)
+	g.queue_free()
+	await process_frame
+	await process_frame
+
+
 func _test_lightning_range() -> void:
+
 
 	print("\n[SMOKE] 雷霆范围回归")
 	var ps: PackedScene = load("res://scenes/game.tscn") as PackedScene

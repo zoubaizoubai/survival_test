@@ -17,7 +17,7 @@ func _ready() -> void:
 	streams["levelup"] = _tone(520.0, 1040.0, 0.28, 0.38, "sine")
 	for i in 10:
 		var p := AudioStreamPlayer.new()
-		p.bus = "Master"
+		p.bus = "Sfx"
 		add_child(p)
 		players.append(p)
 

@@ -2,15 +2,22 @@ extends Control
 
 const Settings := preload("res://scripts/settings.gd")
 const SaveData := preload("res://scripts/save_data.gd")
+const MusicScript := preload("res://scripts/music.gd")
 const GameData := preload("res://scripts/game_data.gd")
 
 var settings_layer: Control
 var volume_slider: HSlider
 var volume_label: Label
+var music_slider: HSlider
+var music_label: Label
+var sfx_slider: HSlider
+var sfx_label: Label
 var shake_check: CheckBox
+var flash_check: CheckBox
 var fps_check: CheckBox
 var stats_label: Label
 var unlock_label: Label
+var music: Node
 
 
 func _ready() -> void:
@@ -19,6 +26,10 @@ func _ready() -> void:
 	GameData.ensure_loaded()
 	_build_settings_layer()
 	_build_stats_display()
+	if not has_node("Music"):
+		music = MusicScript.new()
+		music.name = "Music"
+		add_child(music)
 	# 确保按钮存在时连接（tscn 已有连接，此处补充以防动态创建）
 	var start_btn: Button = get_node_or_null("CenterContainer/VBoxContainer/StartButton") as Button
 	var settings_btn: Button = get_node_or_null("CenterContainer/VBoxContainer/SettingsButton") as Button
@@ -148,7 +159,7 @@ func _build_settings_layer() -> void:
 	center.mouse_filter = Control.MOUSE_FILTER_PASS
 	settings_layer.add_child(center)
 	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(420, 360)
+	panel.custom_minimum_size = Vector2(420, 460)
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = Color(0.09, 0.095, 0.13, 0.98)
 	sb.set_corner_radius_all(16)
@@ -197,6 +208,58 @@ func _build_settings_layer() -> void:
 	volume_label.add_theme_color_override("font_color", Color(0.8, 0.9, 1.0))
 	vol_row.add_child(volume_label)
 	vbox.add_child(vol_row)
+	# 音乐行
+	var music_row := HBoxContainer.new()
+	music_row.add_theme_constant_override("separation", 12)
+	music_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	var music_title := Label.new()
+	music_title.text = "音乐"
+	music_title.custom_minimum_size = Vector2(80, 0)
+	music_title.add_theme_font_size_override("font_size", 14)
+	music_title.add_theme_color_override("font_color", Color(1, 1, 1, 0.85))
+	music_row.add_child(music_title)
+	music_slider = HSlider.new()
+	music_slider.min_value = 0.0
+	music_slider.max_value = 1.0
+	music_slider.step = 0.05
+	music_slider.value = Settings.music_volume
+	music_slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	music_slider.focus_mode = Control.FOCUS_ALL
+	music_slider.value_changed.connect(_on_music_changed)
+	music_row.add_child(music_slider)
+	music_label = Label.new()
+	music_label.text = "%d%%" % int(Settings.music_volume * 100)
+	music_label.custom_minimum_size = Vector2(44, 0)
+	music_label.add_theme_font_size_override("font_size", 14)
+	music_label.add_theme_color_override("font_color", Color(0.8, 0.9, 1.0))
+	music_row.add_child(music_label)
+	vbox.add_child(music_row)
+	# 音效行
+	var sfx_row := HBoxContainer.new()
+	sfx_row.add_theme_constant_override("separation", 12)
+	sfx_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	var sfx_title := Label.new()
+	sfx_title.text = "音效"
+	sfx_title.custom_minimum_size = Vector2(80, 0)
+	sfx_title.add_theme_font_size_override("font_size", 14)
+	sfx_title.add_theme_color_override("font_color", Color(1, 1, 1, 0.85))
+	sfx_row.add_child(sfx_title)
+	sfx_slider = HSlider.new()
+	sfx_slider.min_value = 0.0
+	sfx_slider.max_value = 1.0
+	sfx_slider.step = 0.05
+	sfx_slider.value = Settings.sfx_volume
+	sfx_slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sfx_slider.focus_mode = Control.FOCUS_ALL
+	sfx_slider.value_changed.connect(_on_sfx_changed)
+	sfx_row.add_child(sfx_slider)
+	sfx_label = Label.new()
+	sfx_label.text = "%d%%" % int(Settings.sfx_volume * 100)
+	sfx_label.custom_minimum_size = Vector2(44, 0)
+	sfx_label.add_theme_font_size_override("font_size", 14)
+	sfx_label.add_theme_color_override("font_color", Color(0.8, 0.9, 1.0))
+	sfx_row.add_child(sfx_label)
+	vbox.add_child(sfx_row)
 	# 震动行
 	var shake_row := HBoxContainer.new()
 	shake_row.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -217,6 +280,25 @@ func _build_settings_layer() -> void:
 	shake_spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	shake_row.add_child(shake_spacer)
 	vbox.add_child(shake_row)
+	# 强闪烁行
+	var flash_row := HBoxContainer.new()
+	flash_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	var flash_label := Label.new()
+	flash_label.text = "强闪烁"
+	flash_label.custom_minimum_size = Vector2(80, 0)
+	flash_label.add_theme_font_size_override("font_size", 14)
+	flash_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.85))
+	flash_row.add_child(flash_label)
+	flash_check = CheckBox.new()
+	flash_check.text = "开启"
+	flash_check.button_pressed = Settings.flash_enabled
+	flash_check.focus_mode = Control.FOCUS_ALL
+	flash_check.toggled.connect(_on_flash_toggled)
+	flash_row.add_child(flash_check)
+	var flash_spacer := Control.new()
+	flash_spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	flash_row.add_child(flash_spacer)
+	vbox.add_child(flash_row)
 	# FPS 行（显示选项）
 	var fps_row := HBoxContainer.new()
 	fps_row.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -332,13 +414,24 @@ func _make_separator() -> ColorRect:
 func _on_volume_changed(v: float) -> void:
 	Settings.set_master_volume(v)
 	volume_label.text = "%d%%" % int(v * 100)
-	# 试听
-	var sfx_node: Node = get_node_or_null("/root/Home/SettingsLayer") # placeholder
-	# 轻量反馈：无需额外音效
+
+
+func _on_music_changed(v: float) -> void:
+	Settings.set_music_volume(v)
+	music_label.text = "%d%%" % int(v * 100)
+
+
+func _on_sfx_changed(v: float) -> void:
+	Settings.set_sfx_volume(v)
+	sfx_label.text = "%d%%" % int(v * 100)
 
 
 func _on_shake_toggled(v: bool) -> void:
 	Settings.set_shake_enabled(v)
+
+
+func _on_flash_toggled(v: bool) -> void:
+	Settings.set_flash_enabled(v)
 
 
 func _on_fps_toggled(v: bool) -> void:
@@ -349,7 +442,12 @@ func _on_reset_pressed() -> void:
 	Settings.reset_to_default()
 	volume_slider.value = Settings.master_volume
 	volume_label.text = "%d%%" % int(Settings.master_volume * 100)
+	music_slider.value = Settings.music_volume
+	music_label.text = "%d%%" % int(Settings.music_volume * 100)
+	sfx_slider.value = Settings.sfx_volume
+	sfx_label.text = "%d%%" % int(Settings.sfx_volume * 100)
 	shake_check.button_pressed = Settings.shake_enabled
+	flash_check.button_pressed = Settings.flash_enabled
 	fps_check.button_pressed = Settings.fps_visible
 
 
@@ -376,7 +474,10 @@ func _show_settings() -> void:
 	_refresh_unlock_info()
 	# 同步最新值
 	volume_slider.value = Settings.master_volume
+	music_slider.value = Settings.music_volume
+	sfx_slider.value = Settings.sfx_volume
 	shake_check.button_pressed = Settings.shake_enabled
+	flash_check.button_pressed = Settings.flash_enabled
 	fps_check.button_pressed = Settings.fps_visible
 	# 焦点
 	if volume_slider:
