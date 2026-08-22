@@ -129,13 +129,20 @@ func _update_weapons(delta: float) -> void:
 	for id in weapons:
 		var w: Dictionary = weapons[id]
 		match id:
-			"dagger":
+			"dagger", "dagger_evo":
 				w["t"] -= delta
 				if w["t"] <= 0.0:
-					if _fire_dagger():
-						w["t"] = wstat("dagger")["cd"] * cd_mult()
+					if _fire_dagger(id):
+						w["t"] = wstat(id)["cd"] * cd_mult()
 					else:
 						w["t"] = 0.2
+			"boomerang", "boomerang_evo":
+				w["t"] -= delta
+				if w["t"] <= 0.0:
+					if _fire_boomerang(id):
+						w["t"] = wstat(id)["cd"] * cd_mult()
+					else:
+						w["t"] = 0.25
 			"lightning":
 				w["t"] -= delta
 				if w["t"] <= 0.0:
@@ -146,6 +153,11 @@ func _update_weapons(delta: float) -> void:
 				if w["t"] <= 0.0:
 					_aura_tick()
 					w["t"] = 0.5
+			"frost", "frost_evo":
+				w["t"] -= delta
+				if w["t"] <= 0.0:
+					_frost_nova(id)
+					w["t"] = wstat(id)["cd"] * cd_mult()
 	orbit_angle += orbit_rot() * delta
 	_orbit_damage(delta)
 
@@ -153,11 +165,14 @@ func _update_weapons(delta: float) -> void:
 func orbit_rot() -> float:
 	if weapons.has("orbit"):
 		return wstat("orbit")["rot"]
+	if weapons.has("orbit_evo"):
+		return wstat("orbit_evo")["rot"]
 	return 0.0
 
 
 func orb_positions() -> Array:
-	var st := wstat("orbit")
+	var wid: String = "orbit" if weapons.has("orbit") else "orbit_evo"
+	var st := wstat(wid)
 	var arr: Array = []
 	var n: int = st["orbs"]
 	for i in n:
@@ -178,11 +193,11 @@ func _nearest_enemy(max_d: float) -> Node2D:
 	return best
 
 
-func _fire_dagger() -> bool:
+func _fire_dagger(wid: String = "dagger") -> bool:
 	var target := _nearest_enemy(900.0)
 	if target == null:
 		return false
-	var st := wstat("dagger")
+	var st := wstat(wid)
 	var n: int = st["count"]
 	var dir0: Vector2 = (target.global_position - global_position).normalized()
 	for i in n:
@@ -191,6 +206,44 @@ func _fire_dagger() -> bool:
 		game.spawn_projectile(d, st["dmg"], st["pierce"], position + d * 16.0)
 	game.sfx.play("shoot")
 	return true
+
+
+func _fire_boomerang(wid: String = "boomerang") -> bool:
+	var target := _nearest_enemy(880.0)
+	if target == null:
+		return false
+	var st := wstat(wid)
+	var n: int = int(st.get("count", 1))
+	var dir0: Vector2 = (target.global_position - global_position).normalized()
+	for i in n:
+		var spread := deg_to_rad(-10.0 * (n - 1) * 0.5 + 10.0 * i)
+		var d := dir0.rotated(spread)
+		var spd: float = float(st.get("speed", 450.0))
+		var pierce: int = int(st.get("pierce", 2))
+		var dmg: float = float(st.get("dmg", 16.0))
+		game.spawn_boomerang(d, dmg, pierce, position + d * 14.0, spd)
+	game.sfx.play("shoot")
+	return true
+
+
+func _frost_nova(wid: String = "frost") -> void:
+	var st := wstat(wid)
+	var rad: float = float(st.get("radius", 120.0))
+	var dmg: float = float(st.get("dmg", 14.0))
+	var slow: float = float(st.get("slow", 0.3))
+	var slow_time: float = float(st.get("slow_time", 1.2))
+	# 特效：冰环爆发
+	game.spawn_frost_nova(global_position, rad, slow)
+	for e in game.get_enemies():
+		if e.dead:
+			continue
+		var d2: float = global_position.distance_squared_to(e.global_position)
+		var need: float = rad + e.radius
+		if d2 < need * need:
+			game.hurt_enemy(e, dmg, (e.global_position - global_position).normalized() * 60.0)
+			if e.has_method("apply_slow"):
+				e.apply_slow(slow, slow_time)
+	game.sfx.play("thunder")
 
 
 func _fire_lightning() -> void:
@@ -239,11 +292,12 @@ func _aura_tick() -> void:
 
 
 func _orbit_damage(delta: float) -> void:
-	if not weapons.has("orbit"):
+	if not weapons.has("orbit") and not weapons.has("orbit_evo"):
 		return
 	if orbit_hits.size() > 300:
 		orbit_hits.clear()
-	var st := wstat("orbit")
+	var oid: String = "orbit" if weapons.has("orbit") else "orbit_evo"
+	var st := wstat(oid)
 	var positions := orb_positions()
 	for e in game.get_enemies():
 		if e.dead:
@@ -263,6 +317,15 @@ func _orbit_damage(delta: float) -> void:
 
 
 func _draw() -> void:
+	# frost 预警环（与 aura 叠加）
+	if weapons.has("frost") or weapons.has("frost_evo"):
+		var fid: String = "frost" if weapons.has("frost") else "frost_evo"
+		var fst := wstat(fid)
+		var fr: float = float(fst.get("radius", 120.0))
+		var wt: float = float(weapons[fid].get("t", 0.0))
+		var cd: float = float(fst.get("cd", 3.0)) * cd_mult()
+		var pct: float = 1.0 - clampf(wt / maxf(cd, 0.1), 0.0, 1.0)
+		draw_arc(Vector2.ZERO, fr, 0, TAU * pct, 48, Color(0.55, 0.75, 1.0, 0.18), 2.0, true)
 	if weapons.has("aura"):
 		var st := wstat("aura")
 		var r: float = st["radius"] * (1.0 + 0.03 * sin(time_alive * 4.0))

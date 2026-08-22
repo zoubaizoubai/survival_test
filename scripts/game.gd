@@ -512,6 +512,9 @@ func spawn_projectile(dir: Vector2, dmg: float, pierce: int, pos: Vector2) -> vo
 	p.set("dmg", dmg)
 	p.set("pierce", pierce)
 	p.set("life", 1.5)
+	p.set("is_boomerang", false)
+	p.set("boomerang_t", 0.0)
+	p.set("boomerang_has_returned", false)
 	(p.get("hit_ids") as Dictionary).clear()
 	p.position = pos
 	p.rotation = dir.angle()
@@ -519,10 +522,68 @@ func spawn_projectile(dir: Vector2, dmg: float, pierce: int, pos: Vector2) -> vo
 		p.get_parent().remove_child(p)
 	projectiles_node.add_child(p)
 
+
+func spawn_boomerang(dir: Vector2, dmg: float, pierce: int, pos: Vector2, spd: float = 520.0) -> void:
+	var p: Node
+	if _proj_pool.size() > 0:
+		p = _proj_pool.pop_back()
+		p.visible = true
+	else:
+		p = ProjectileScript.new()
+	p.set("game", self)
+	p.set("dir", dir)
+	p.set("dmg", dmg)
+	p.set("pierce", pierce)
+	p.set("speed", spd)
+	p.set("life", 1.65)
+	p.set("is_boomerang", true)
+	p.set("boomerang_t", 0.0)
+	p.set("boomerang_has_returned", false)
+	# 从平衡中取 return_time，若无则 0.45
+	var rt: float = 0.45
+	# 尝试从当前 boomerang 等级中获取
+	# 调用方已传入速度，return_time 固定
+	p.set("boomerang_return", rt)
+	(p.get("hit_ids") as Dictionary).clear()
+	p.position = pos
+	p.rotation = dir.angle()
+	if p.get_parent():
+		p.get_parent().remove_child(p)
+	projectiles_node.add_child(p)
+
+
+func spawn_frost_nova(pos: Vector2, rad: float, slow: float) -> void:
+	# 冰环特效：外圈 + 内爆
+	var col := Color(0.55, 0.78, 1.0)
+	spawn_burst(pos, col, rad * 0.9)
+	# 额外细环
+	var b: Fx.Burst
+	if _burst_pool.size() > 0:
+		b = _burst_pool.pop_back() as Fx.Burst
+		b.visible = true
+	else:
+		b = Fx.Burst.new()
+	b.game = self
+	b.position = pos
+	b.color_v = Color(0.72, 0.88, 1.0, 0.55)
+	b.max_r = rad
+	b.life = 0.42
+	b.t = 0.0
+	if b.get_parent():
+		b.get_parent().remove_child(b)
+	fx_node.add_child(b)
+	shake = maxf(shake, 2.0 + rad * 0.01)
+
+
 func _recycle_projectile(p: Node) -> void:
 	if p.get_parent():
 		p.get_parent().remove_child(p)
 	p.visible = false
+	# 重置 boomerang 标记，避免池复用污染
+	p.set("is_boomerang", false)
+	p.set("boomerang_t", 0.0)
+	p.set("boomerang_has_returned", false)
+	p.set("speed", 560.0)
 	_proj_pool.append(p)
 
 
@@ -558,11 +619,49 @@ func _on_card_chosen(card: Dictionary) -> void:
 
 func _roll_cards() -> Array:
 	var cands: Array = []
+	# 进化优先：检查是否满足任一进化条件
+	for evo in GameData.evolutions:
+		if not evo is Dictionary:
+			continue
+		var ed: Dictionary = evo as Dictionary
+		var w: String = str(ed.get("weapon", ""))
+		var pas: String = str(ed.get("passive", ""))
+		var res: String = str(ed.get("result", ""))
+		if w == "" or pas == "" or res == "":
+			continue
+		if not player.weapons.has(w):
+			continue
+		if player.weapons.has(res):
+			continue
+		var need_wlv: int = int(ed.get("need_weapon_lv", 8))
+		var need_plv: int = int(ed.get("need_passive_lv", 5))
+		var cur_wlv: int = int(player.weapons[w]["lv"])
+		var cur_plv: int = int(player.passives.get(pas, 0))
+		if cur_wlv >= need_wlv and cur_plv >= need_plv:
+			# 已满且未进化，加入进化候选
+			var evo_cnt: int = 0
+			for cc in cands:
+				if cc["kind"] == "evolution" and cc["id"] == w:
+					evo_cnt += 1
+			if evo_cnt == 0:
+				cands.append({"kind": "evolution", "id": w, "result": res, "passive": pas, "evo_name": str(ed.get("name", res))})
+	# 普通武器新获：排除 evo 武器，且受 4 槽限制
 	for id in WEAPONS:
+		var winfo: Dictionary = WEAPONS[id] as Dictionary
+		if winfo.get("evo", false):
+			continue
 		if not player.weapons.has(id):
 			if player.weapons.size() < 4:
 				cands.append({"kind": "weapon_new", "id": id})
 		else:
+			# 若该武器有进化且条件已满足，则不提供普通升级（由进化替代）
+			var has_evo_pending: bool = false
+			for cc in cands:
+				if cc["kind"] == "evolution" and cc["id"] == id:
+					has_evo_pending = true
+					break
+			if has_evo_pending:
+				continue
 			if player.weapons[id]["lv"] < WEAPONS[id]["levels"].size():
 				cands.append({"kind": "weapon_up", "id": id})
 	for id in PASSIVES:
@@ -570,16 +669,37 @@ func _roll_cards() -> Array:
 			cands.append({"kind": "passive", "id": id})
 	cands.shuffle()
 	var picked: Array = []
+	# 优先保证进化至少出现一张（若存在）
+	var evo_in_cands: Array = []
+	for c in cands:
+		if c["kind"] == "evolution":
+			evo_in_cands.append(c)
+	if not evo_in_cands.is_empty():
+		picked.append(evo_in_cands[0])
 	for c in cands:
 		if picked.size() >= 3:
 			break
+		# 去重：同 id 仅一次（进化与原武器视为同 id）
 		var dup := false
 		for p in picked:
 			if p["id"] == c["id"]:
 				dup = true
 				break
-		if not dup:
-			picked.append(c)
+			if c["kind"] == "evolution" and p["kind"] == "evolution" and p["result"] == c["result"]:
+				dup = true
+				break
+		if dup:
+			continue
+		# 若已挑进化，则不再重复挑同武器的普通升级
+		if c["kind"] == "weapon_up":
+			var skip: bool = false
+			for p in picked:
+				if p["kind"] == "evolution" and p["id"] == c["id"]:
+					skip = true
+					break
+			if skip:
+				continue
+		picked.append(c)
 	while picked.size() < 3:
 		picked.append({"kind": "heal"})
 	return picked
@@ -593,6 +713,16 @@ func _apply_card(c: Dictionary) -> void:
 			player.weapons[c["id"]]["lv"] += 1
 		"passive":
 			player.add_passive(c["id"])
+		"evolution":
+			var w: String = str(c["id"])
+			var res: String = str(c.get("result", w + "_evo"))
+			# 替换：移除原武器，加入进化武器 Lv1
+			if player.weapons.has(w):
+				player.weapons.erase(w)
+			player.add_weapon(res)
+			# 特效与音效
+			spawn_burst(player.global_position, WEAPONS[res]["color"] if WEAPONS.has(res) else Color(1,1,1), 60)
+			shake = 8.0
 		"heal":
 			player.heal(40)
 

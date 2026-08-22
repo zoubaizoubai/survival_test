@@ -59,6 +59,10 @@ var boss_shock_radius := 120.0
 var boss_summon_t := 0.0
 var boss_has_transformed := false
 
+# 减速状态（frost）
+var slow_t := 0.0
+var slow_factor := 1.0
+
 
 func _ready() -> void:
 	add_to_group("enemies")
@@ -105,6 +109,9 @@ func _process(delta: float) -> void:
 		return
 	flash = maxf(flash - delta * 6.0, 0.0)
 	attack_cd -= delta
+	slow_t = maxf(slow_t - delta, 0.0)
+	if slow_t <= 0.0:
+		slow_factor = 1.0
 	kb = kb.move_toward(Vector2.ZERO, 700.0 * delta)
 	var pl: Node2D = game.player
 	if pl == null or pl.dead or game.ended:
@@ -132,7 +139,7 @@ func _process_chase(delta: float, pl: Node2D) -> void:
 	var to_p: Vector2 = pl.global_position - global_position
 	var dir := to_p.normalized()
 	var sway := dir.orthogonal() * sin(wob * 3.0 + wobble_seed) * (7.0 if kind == "bat" else 0.0)
-	position += (dir * speed + sway + kb) * delta
+	position += (dir * speed * slow_factor + sway + kb) * delta
 	position.x = clampf(position.x, -game.ARENA + 20.0, game.ARENA - 20.0)
 	position.y = clampf(position.y, -game.ARENA + 20.0, game.ARENA - 20.0)
 	if to_p.length() < radius + 14.0 and attack_cd <= 0.0:
@@ -155,7 +162,7 @@ func _process_charger(delta: float, pl: Node2D) -> void:
 			charge_cd -= delta
 			# 普通追踪（稍慢）
 			var dir := to_p.normalized()
-			position += (dir * speed + kb) * delta
+			position += (dir * speed * slow_factor + kb) * delta
 			position.x = clampf(position.x, -game.ARENA + 20.0, game.ARENA - 20.0)
 			position.y = clampf(position.y, -game.ARENA + 20.0, game.ARENA - 20.0)
 			# 触发冲锋：需在范围内且冷却完毕且同屏（避免屏外无预警必中）
@@ -184,7 +191,7 @@ func _process_charger(delta: float, pl: Node2D) -> void:
 					dash_dir = Vector2.RIGHT
 		"dash":
 			dash_t -= delta
-			var move: Vector2 = dash_dir * dash_speed + kb
+			var move: Vector2 = dash_dir * dash_speed * slow_factor + kb
 			position += move * delta
 			position.x = clampf(position.x, -game.ARENA + 20.0, game.ARENA - 20.0)
 			position.y = clampf(position.y, -game.ARENA + 20.0, game.ARENA - 20.0)
@@ -230,11 +237,11 @@ func _process_caster(delta: float, pl: Node2D) -> void:
 	var dir: Vector2 = to_p.normalized() if dist > 1.0 else Vector2.RIGHT
 	# 行为：过远则靠近，过近则远离，适中则横向微移
 	if dist > rmax:
-		position += (dir * speed + kb) * delta
+		position += (dir * speed * slow_factor + kb) * delta
 	elif dist < rmin:
-		position += (-dir * speed * 0.9 + kb) * delta
+		position += (-dir * speed * slow_factor * 0.9 + kb) * delta
 	else:
-		var strafe := dir.orthogonal() * sin(wob * 2.0 + wobble_seed) * speed * 0.4
+		var strafe := dir.orthogonal() * sin(wob * 2.0 + wobble_seed) * speed * slow_factor * 0.4
 		position += (strafe + kb * 0.5) * delta
 		# 施法判定：距离适中且冷却完毕
 		if cast_cd <= 0.0 and dist >= rmin and dist <= rmax:
@@ -313,12 +320,22 @@ func _process_boss(delta: float, pl: Node2D) -> void:
 	var dir := to_p.normalized()
 	# boss 在预警时减速，便于玩家预判
 	var move_spd: float = speed * (0.35 if boss_warning_t > 0.0 else 1.0)
-	position += (dir * move_spd + kb) * delta
+	position += (dir * move_spd * slow_factor + kb) * delta
 	position.x = clampf(position.x, -game.ARENA + 20.0, game.ARENA - 20.0)
 	position.y = clampf(position.y, -game.ARENA + 20.0, game.ARENA - 20.0)
 	if to_p.length() < radius + 16.0 and attack_cd <= 0.0:
 		attack_cd = 0.7
 		pl.hurt(dmg)
+
+
+func apply_slow(factor: float, dur: float) -> void:
+	if dead:
+		return
+	slow_factor = minf(slow_factor, 1.0 - factor)
+	slow_factor = clampf(slow_factor, 0.15, 1.0)
+	slow_t = maxf(slow_t, dur)
+	# 视觉反馈：短暂闪蓝
+	flash = maxf(flash, 0.6)
 
 
 func take_hit(amount: float, kdir: Vector2 = Vector2.ZERO) -> void:
@@ -364,7 +381,10 @@ func _draw() -> void:
 		draw_arc(local_boss, boss_shock_radius, 0, TAU, 64, Color(1.0, 0.35, 0.35, 0.75), 3.0, true)
 		draw_arc(local_boss, boss_shock_radius + 6.0, 0, TAU * (1.0 - pct2), 48, Color(1, 0.9, 0.3, 0.9), 2.5, true)
 	# 本体绘制
+	var is_slowed: bool = slow_t > 0.05
 	var col := base_color.lerp(Color(1, 1, 1), flash * 0.75)
+	if is_slowed:
+		col = col.lerp(Color(0.6, 0.8, 1.0), 0.35 * clampf(slow_t / 2.0, 0.0, 1.0))
 	match kind:
 		"slime":
 			var bob := sin(wob * 6.0 + wobble_seed) * 2.0
@@ -425,6 +445,9 @@ func _draw() -> void:
 			if boss_phase == 2:
 				# 二阶段光环
 				draw_arc(Vector2.ZERO, radius + 10.0, 0, TAU, 32, Color(1.0, 0.3, 0.3, 0.35 + 0.15 * sin(wob * 4.0)), 3.0, true)
+	if is_slowed:
+		# 减速光环
+		draw_arc(Vector2.ZERO, radius + 4.0, 0, TAU, 16, Color(0.55, 0.78, 1.0, 0.5), 1.5, true)
 	if hp < max_hp and not dead:
 		var w := radius * 2.2
 		var pct := clampf(hp / max_hp, 0.0, 1.0)

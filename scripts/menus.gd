@@ -311,27 +311,78 @@ func hide_end() -> void:
 	end_layer.visible = false
 
 
+func _describe_next(c: Dictionary) -> String:
+	match c["kind"]:
+		"weapon_new":
+			var w: Dictionary = game.WEAPONS[c["id"]]
+			var lv0: Dictionary = (w["levels"] as Array)[0] as Dictionary
+			return _format_levels(lv0, lv0)
+		"weapon_up":
+			var w2: Dictionary = game.WEAPONS[c["id"]]
+			var lv: int = int(game.player.weapons[c["id"]]["lv"])
+			var cur: Dictionary = (w2["levels"] as Array)[lv - 1] as Dictionary
+			var nxt: Dictionary = (w2["levels"] as Array)[mini(lv, w2["levels"].size() - 1)] as Dictionary
+			return _format_levels(cur, nxt)
+		"passive":
+			var p: Dictionary = game.PASSIVES[c["id"]]
+			var cur2: int = int(game.player.passives.get(c["id"], 0))
+			return "Lv%d → Lv%d · %s" % [cur2, cur2 + 1, p["desc"]]
+		"evolution":
+			var w3: Dictionary = game.WEAPONS[c["id"]]
+			var pas: String = str(c.get("passive", ""))
+			var res: String = str(c.get("result", ""))
+			var rinfo: Dictionary = game.WEAPONS[res] if game.WEAPONS.has(res) else {}
+			var rname: String = str(rinfo.get("name", res))
+			return "%s Lv%d + %s → %s" % [w3["name"], int(game.player.weapons[c["id"]]["lv"]), pas, rname]
+		_:
+			return "回复 40 HP"
+
+
+func _format_levels(cur: Dictionary, nxt: Dictionary) -> String:
+	var parts: Array = []
+	for k in ["count", "orbs", "pierce", "orbs", "strikes", "dmg", "cd", "radius", "rot", "aoe", "dps", "speed", "slow", "slow_time", "return_time"]:
+		if cur.has(k) or nxt.has(k):
+			var cv: Variant = cur.get(k, null)
+			var nv: Variant = nxt.get(k, null)
+			if cv != null and nv != null and str(cv) != str(nv):
+				parts.append("%s %.1f→%.1f" % [k, float(cv), float(nv)] if cv is float or nv is float else "%s %s→%s" % [k, str(cv), str(nv)])
+			elif nv != null and cur.get(k, null) == null:
+				parts.append("%s %s" % [k, str(nv)])
+	if parts.is_empty():
+		# 至少显示一个关键数值
+		for k in nxt.keys():
+			if k in ["count", "dmg", "cd", "pierce", "radius", "orbs", "aoe"]:
+				parts.append("%s %s" % [k, str(nxt[k])])
+				break
+	return " · ".join(parts) if not parts.is_empty() else nxt.values()[0] if not nxt.is_empty() else ""
+
+
 func _card_info(c: Dictionary) -> Dictionary:
 	match c["kind"]:
 		"weapon_new":
 			var w: Dictionary = game.WEAPONS[c["id"]]
-			return {"title": w["name"], "tag": "新武器", "desc": w["desc"], "color": w["color"]}
+			return {"title": w["name"], "tag": "新武器", "desc": w["desc"] + "\n" + _describe_next(c), "color": w["color"]}
 		"weapon_up":
 			var w2: Dictionary = game.WEAPONS[c["id"]]
-			var lv: int = game.player.weapons[c["id"]]["lv"]
-			return {"title": w2["name"], "tag": "升级 Lv%d → Lv%d" % [lv, lv + 1], "desc": w2["desc"], "color": w2["color"]}
+			var lv: int = int(game.player.weapons[c["id"]]["lv"])
+			return {"title": w2["name"], "tag": "升级 Lv%d → Lv%d" % [lv, lv + 1], "desc": w2["desc"] + "\n" + _describe_next(c), "color": w2["color"]}
 		"passive":
 			var p: Dictionary = game.PASSIVES[c["id"]]
-			var cur: int = game.player.passives.get(c["id"], 0)
-			return {"title": p["name"], "tag": "祝福 %d/%d" % [cur + 1, p["max"]], "desc": p["desc"], "color": p["color"]}
+			var cur: int = int(game.player.passives.get(c["id"], 0))
+			return {"title": p["name"], "tag": "祝福 %d/%d" % [cur + 1, p["max"]], "desc": p["desc"] + "\n" + _describe_next(c), "color": p["color"]}
+		"evolution":
+			var w3: Dictionary = game.WEAPONS[c["id"]]
+			var res: String = str(c.get("result", ""))
+			var rinfo: Dictionary = game.WEAPONS[res] if game.WEAPONS.has(res) else w3
+			return {"title": str(rinfo.get("name", res)), "tag": "进化 · " + str(c.get("evo_name", "进化")), "desc": str(rinfo.get("desc", "")) + "\n" + _describe_next(c), "color": rinfo.get("color", w3["color"])}
 		_:
-			return {"title": "急救包", "tag": "回复", "desc": "立即回复 40 点生命值", "color": Color(0.4, 0.95, 0.6)}
+			return {"title": "急救包", "tag": "回复", "desc": "立即回复 40 点生命值\n" + _describe_next(c), "color": Color(0.4, 0.95, 0.6)}
 
 
 func _make_card(card: Dictionary) -> PanelContainer:
 	var info := _card_info(card)
 	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(250, 210)
+	panel.custom_minimum_size = Vector2(250, 230)
 	panel.focus_mode = Control.FOCUS_ALL
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = Color(0.09, 0.095, 0.13, 0.97)

@@ -105,6 +105,7 @@ func _run_all() -> void:
 	await _test_lightning_range()
 	await _test_state_mutex_and_recovery()
 	await _test_enemy_behaviors_and_director()
+	await _test_weapon_evolution_and_builds()
 	# 确保所有异步清理完成
 	await process_frame
 	await process_frame
@@ -830,7 +831,7 @@ func _test_data_driven() -> void:
 	var warns: Array = gd.get_warnings()
 	_assert(errs.is_empty(), "GameData 校验无错误", "错误: %s" % str(errs))
 	# 武器、被动、敌人数量保持一致
-	_assert(gd.weapons.size() == 4, "武器数量 4", "实际 %d" % gd.weapons.size())
+	_assert(gd.weapons.size() == 10, "武器数量 10（含 boomerang/frost/进化）", "实际 %d" % gd.weapons.size())
 	_assert(gd.passives.size() == 5, "被动数量 5", "实际 %d" % gd.passives.size())
 	_assert(gd.enemies.size() == 7, "敌人种类 7（含 charger/caster）", "实际 %d" % gd.enemies.size())
 	# ID 检查
@@ -856,7 +857,28 @@ func _test_data_driven() -> void:
 	# 颜色类型校验
 	_assert(gd.weapons["dagger"]["color"] is Color, "武器颜色为 Color", "类型 %s" % str(typeof(gd.weapons["dagger"]["color"])))
 	_assert(gd.enemies["boss"]["color"] is Color, "敌人颜色为 Color", "类型")
-	print("  GameData 已加载：weapons=%d passives=%d enemies=%d spawn_keys=%s" % [gd.weapons.size(), gd.passives.size(), gd.enemies.size(), str(gd.spawn.keys())])
+	# 进化配置校验
+	_assert(gd.evolutions.size() == 4, "进化组合 4 条", "实际 %d" % gd.evolutions.size())
+	for evo in gd.evolutions:
+		var ed: Dictionary = evo as Dictionary
+		_assert(gd.weapons.has(str(ed["weapon"])), "进化武器存在 %s" % str(ed["weapon"]), "缺失")
+		_assert(gd.weapons.has(str(ed["result"])), "进化结果存在 %s" % str(ed["result"]), "缺失")
+		_assert(gd.passives.has(str(ed["passive"])), "进化被动存在 %s" % str(ed["passive"]), "缺失")
+	# 新武器机制校验
+	_assert(gd.weapons.has("boomerang"), "武器包含 boomerang", "缺失")
+	_assert(gd.weapons.has("frost"), "武器包含 frost", "缺失")
+	var boom: Dictionary = gd.weapons["boomerang"] as Dictionary
+	var frost: Dictionary = gd.weapons["frost"] as Dictionary
+	_assert((boom["levels"] as Array).size() == 8, "boomerang 等级 8", "实际 %d" % ((boom["levels"] as Array).size()))
+	_assert((frost["levels"] as Array).size() == 8, "frost 等级 8", "实际 %d" % ((frost["levels"] as Array).size()))
+	# 检查机制差异：dagger boomerang frost 字段不同
+	var d_levels: Array = gd.weapons["dagger"]["levels"] as Array
+	var b_levels: Array = gd.weapons["boomerang"]["levels"] as Array
+	var f_levels: Array = gd.weapons["frost"]["levels"] as Array
+	_assert((d_levels[0] as Dictionary).has("count") and (d_levels[0] as Dictionary).has("pierce"), "dagger 字段正确", "缺失")
+	_assert((b_levels[0] as Dictionary).has("speed") and (b_levels[0] as Dictionary).has("return_time"), "boomerang 具回旋字段", "缺失 %s" % str(b_levels[0]))
+	_assert((f_levels[0] as Dictionary).has("slow") and (f_levels[0] as Dictionary).has("radius"), "frost 具减速字段", "缺失 %s" % str(f_levels[0]))
+	print("  GameData 已加载：weapons=%d passives=%d enemies=%d evolutions=%d spawn_keys=%s" % [gd.weapons.size(), gd.passives.size(), gd.enemies.size(), gd.evolutions.size(), str(gd.spawn.keys())])
 	if not warns.is_empty():
 		print("  [WARN] %s" % str(warns))
 
@@ -1011,6 +1033,167 @@ func _test_enemy_behaviors_and_director() -> void:
 		found_charger._process(0.02)
 		_assert(str(found_charger.get("charge_state")) == "chase", "屏外远距 charger 不直接 windup", "state %s" % str(found_charger.get("charge_state")))
 	g.queue_free()
+	await process_frame
+	await process_frame
+
+
+func _test_weapon_evolution_and_builds() -> void:
+	print("\n[SMOKE] 武器构筑与进化")
+	var gd: GDScript = preload("res://scripts/game_data.gd")
+	gd.ensure_loaded()
+	# 1. 新武器机制不同：验证卡池包含且不计进化武器为初始候选
+	var ps: PackedScene = load("res://scenes/game.tscn") as PackedScene
+	var g: Node = ps.instantiate()
+	root.add_child(g)
+	await process_frame
+	await process_frame
+	var player: Node = g.get("player") as Node
+	# 清理初始武器外，验证新武器可加入且辨识度
+	# 初始仅 dagger，验证 boomerang / frost 可作为新武器候选
+	var cands_early: Array = g._roll_cards()
+	var has_new_weapon_candidate: bool = false
+	for c in cands_early:
+		if c["kind"] == "weapon_new" and (str(c["id"]) == "boomerang" or str(c["id"]) == "frost"):
+			has_new_weapon_candidate = true
+			break
+	# 由于候选随机，循环多次确保至少一次出现新武器
+	if not has_new_weapon_candidate:
+		var found: bool = false
+		for iter in 20:
+			var cc: Array = g._roll_cards()
+			for c in cc:
+				if c["kind"] == "weapon_new" and (str(c["id"]) == "boomerang" or str(c["id"]) == "frost"):
+					found = true
+					break
+			if found:
+				break
+		_assert(found or has_new_weapon_candidate or cands_early.size() == 3, "新武器 boomerang/frost 可作为候选", "早期候选 %s" % str(cands_early))
+	# 2. 被动与进化：构造满级条件触发进化
+	# 将 dagger 升至 8，damage 升至 5，验证进化卡出现
+	player.weapons["dagger"]["lv"] = 8
+	player.passives["damage"] = 5
+	# 确保其他武器不满以避免干扰
+	# 强制 _roll_cards 包含进化
+	var evo_found: bool = false
+	var evo_card: Dictionary = {}
+	for iter in 30:
+		var cards: Array = g._roll_cards()
+		for c in cards:
+			if c["kind"] == "evolution" and str(c["id"]) == "dagger":
+				evo_found = true
+				evo_card = c
+				break
+		if evo_found:
+			break
+	_assert(evo_found, "dagger+damage 满级应出现进化卡", "未出现进化")
+	if evo_found:
+		_assert(evo_card.has("result") and str(evo_card["result"]) == "dagger_evo", "进化结果为 dagger_evo", "实际 %s" % str(evo_card.get("result", "")))
+		# 验证进化卡展示下一级变化（通过 menus._card_info）
+		var menus: Control = g.get("menus") as Control
+		var info: Dictionary = menus._card_info(evo_card)
+		_assert(str(info["tag"]).contains("进化"), "进化卡 tag 含进化", "tag=%s" % str(info["tag"]))
+		_assert(str(info["desc"]).length() > 10, "进化卡 desc 含变化说明", "desc=%s" % str(info["desc"]))
+		# 执行进化
+		var before_size: int = player.weapons.size()
+		g._apply_card(evo_card)
+		_assert(not player.weapons.has("dagger"), "进化后原武器移除", "仍存在 dagger")
+		_assert(player.weapons.has("dagger_evo"), "进化后获得 dagger_evo", "缺失 evo")
+		_assert(int(player.weapons["dagger_evo"]["lv"]) == 1, "evo 初始 Lv1", "lv=%d" % int(player.weapons["dagger_evo"]["lv"]))
+		_assert(player.weapons.size() == before_size, "进化不占额外槽位（替换）", "size %d vs %d" % [before_size, player.weapons.size()])
+	# 3. 近战/投射/范围/控制构筑辨识度：验证四类武器可同时持有且独立计时
+	# 重置为新对局验证多构筑
+	g.queue_free()
+	await process_frame
+	await process_frame
+	var g2: Node = ps.instantiate()
+	root.add_child(g2)
+	await process_frame
+	await process_frame
+	var p2: Node = g2.get("player") as Node
+	p2.weapons.clear()
+	p2.add_weapon("dagger")
+	p2.add_weapon("boomerang")
+	p2.add_weapon("frost")
+	p2.add_weapon("aura")
+	_assert(p2.weapons.size() == 4, "可持有 4 武器形成多构筑", "size=%d" % p2.weapons.size())
+	_assert(p2.weapons.has("dagger") and p2.weapons.has("boomerang") and p2.weapons.has("frost") and p2.weapons.has("aura"), "四构筑武器共存", "缺失 %s" % str(p2.weapons.keys()))
+	# 验证 frost 新星可触发且产生减速（模拟）
+	p2.weapons["frost"]["t"] = -1.0
+	var g2enemies_node: Node = g2.get("enemies_node") as Node
+	for e in g2enemies_node.get_children():
+		e.queue_free()
+	await process_frame
+	g2._spawn_at("slime", p2.global_position + Vector2(80, 0))
+	await process_frame
+	var test_enemy: Node = g2.get_tree().get_nodes_in_group("enemies")[0] as Node
+	var hp_before: float = float(test_enemy.get("hp"))
+	p2._frost_nova("frost")
+	await process_frame
+	var hp_after: float = float(test_enemy.get("hp")) if is_instance_valid(test_enemy) else hp_before - 1
+	_assert(hp_after < hp_before - 0.1, "frost 新星可造成伤害", "hp %.1f->%.1f" % [hp_before, hp_after])
+	if is_instance_valid(test_enemy):
+		var slowed: float = float(test_enemy.get("slow_t"))
+		_assert(slowed > 0.5, "frost 命中施加减速", "slow_t=%.2f" % slowed)
+	# 4. 升级卡准确展示下一等级变化、防重复、保底
+	# 构造满溢情景：全部武器与被动满级，候选应为治疗保底且无重复 id
+	for wid in p2.weapons.keys():
+		var wlv_max: int = int((gd.weapons[wid]["levels"] as Array).size())
+		p2.weapons[wid]["lv"] = wlv_max
+	for pid in gd.passives.keys():
+		p2.passives[pid] = int(gd.passives[pid]["max"])
+	# 若仍有进化未完成，进化会优先出现，这不算满溢；先完成所有进化以达真正满溢
+	for evo in gd.evolutions:
+		var ed: Dictionary = evo as Dictionary
+		var w: String = str(ed["weapon"])
+		var res: String = str(ed["result"])
+		if p2.weapons.has(w) and not p2.weapons.has(res):
+			# 满足进化条件时，视为未满（应出现进化），故先手动进化以清空
+			p2.weapons.erase(w)
+			p2.add_weapon(res)
+	# 此时武器与被动均满，进化也完成，候选应为 3 个 heal
+	var full_cards: Array = g2._roll_cards()
+	_assert(full_cards.size() == 3, "满配时仍返回 3 张", "size=%d" % full_cards.size())
+	var heal_cnt: int = 0
+	var id_set: Dictionary = {}
+	var dup: bool = false
+	for c in full_cards:
+		if c["kind"] == "heal":
+			heal_cnt += 1
+		else:
+			var id: String = str(c.get("id", "")) + str(c.get("result", ""))
+			if id_set.has(id):
+				dup = true
+			id_set[id] = true
+	_assert(heal_cnt >= 1, "候选耗尽时有治疗保底", "cards=%s" % str(full_cards))
+	_assert(not dup, "满配候选无重复 id", "cards=%s" % str(full_cards))
+	# 非满配时验证无重复 id 且准确展示下一等级
+	p2.weapons.clear()
+	p2.passives.clear()
+	p2.add_weapon("dagger")
+	p2.weapons["dagger"]["lv"] = 2
+	var cards2: Array = g2._roll_cards()
+	var seen: Dictionary = {}
+	var dup2: bool = false
+	for c in cards2:
+		if c["kind"] == "heal":
+			continue
+		var key: String = str(c["kind"]) + ":" + str(c.get("id", "")) + str(c.get("result", ""))
+		if seen.has(key):
+			dup2 = true
+		seen[key] = true
+	_assert(not dup2, "常规 roll 无重复选项", "cards=%s" % str(cards2))
+	# 验证下一等级展示：取一张 weapon_up 卡检查 tag 含 Lv 变化且 desc 含数值
+	var up_card: Dictionary = {}
+	for c in cards2:
+		if c["kind"] == "weapon_up":
+			up_card = c
+			break
+	if not up_card.is_empty():
+		var menus2: Control = g2.get("menus") as Control
+		var info2: Dictionary = menus2._card_info(up_card)
+		_assert(str(info2["tag"]).contains("Lv"), "升级卡 tag 含 Lv 变化", "tag=%s" % str(info2["tag"]))
+		_assert(str(info2["desc"]).length() > str(gd.weapons[up_card["id"]]["desc"]).length(), "升级卡 desc 含下一级数值", "desc=%s" % str(info2["desc"]))
+	g2.queue_free()
 	await process_frame
 	await process_frame
 

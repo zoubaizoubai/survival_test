@@ -10,6 +10,7 @@ static var weapons: Dictionary = {}
 static var passives: Dictionary = {}
 static var enemies: Dictionary = {}
 static var spawn: Dictionary = {}
+static var evolutions: Array = []
 static var arena: float = 2600.0
 static var goal_time: float = 300.0
 static var max_enemies: int = 170
@@ -70,6 +71,7 @@ static func _load_all() -> void:
 	passives = _parse_passives(dict.get("passives", {}))
 	enemies = _parse_enemies(dict.get("enemies", {}))
 	spawn = dict.get("spawn", {}) as Dictionary
+	evolutions = _parse_evolutions(dict.get("evolutions", []))
 	# 兼容：若 spawn 为空则回退
 	if spawn.is_empty():
 		_warnings.append("spawn 为空，使用内置默认值")
@@ -87,6 +89,7 @@ static func _load_defaults() -> void:
 	passives = _default_passives()
 	enemies = _default_enemies()
 	spawn = _default_spawn()
+	evolutions = _default_evolutions()
 	arena = float(spawn["arena"])
 	goal_time = float(spawn["goal_time"])
 	max_enemies = int(spawn["max_enemies"])
@@ -117,12 +120,15 @@ static func _parse_weapons(raw: Variant) -> Dictionary:
 				levels.append((lv as Dictionary).duplicate(true))
 			else:
 				_errors.append("weapons[%s].levels 元素非 Dictionary" % str(id))
-		out[id] = {
+		var entry: Dictionary = {
 			"name": str(wd.get("name", id)),
 			"color": color,
 			"desc": str(wd.get("desc", "")),
 			"levels": levels,
 		}
+		if wd.has("evo"):
+			entry["evo"] = bool(wd["evo"])
+		out[id] = entry
 	if out.is_empty():
 		_warnings.append("weapons 为空，回退默认值")
 		return _default_weapons()
@@ -152,6 +158,28 @@ static func _parse_passives(raw: Variant) -> Dictionary:
 	if out.is_empty():
 		_warnings.append("passives 为空，回退默认值")
 		return _default_passives()
+	return out
+
+
+static func _parse_evolutions(raw: Variant) -> Array:
+	var out: Array = []
+	if not raw is Array:
+		if raw is Dictionary and not (raw as Dictionary).is_empty():
+			_errors.append("evolutions 非 Array")
+		return _default_evolutions()
+	for idx in (raw as Array).size():
+		var v: Variant = (raw as Array)[idx]
+		if not v is Dictionary:
+			_errors.append("evolutions[%d] 非 Dictionary" % idx)
+			continue
+		var d: Dictionary = v as Dictionary
+		if not d.has("weapon") or not d.has("passive") or not d.has("result"):
+			_errors.append("evolutions[%d] 缺少 weapon/passive/result" % idx)
+			continue
+		out.append(d.duplicate(true))
+	if out.is_empty():
+		_warnings.append("evolutions 为空，使用默认值")
+		return _default_evolutions()
 	return out
 
 
@@ -311,6 +339,21 @@ static func _validate() -> void:
 					_errors.append("spawn.waves[%d] 缺少 t/weights" % wi)
 				if wd.has("weights") and not wd["weights"] is Dictionary:
 					_errors.append("spawn.waves[%d].weights 非 Dictionary" % wi)
+	# 进化校验
+	for idx in evolutions.size():
+		var ev: Variant = evolutions[idx]
+		if not ev is Dictionary:
+			continue
+		var ed: Dictionary = ev as Dictionary
+		for k in ["weapon", "passive", "result"]:
+			if not ed.has(k):
+				_errors.append("evolutions[%d] 缺少 %s" % [idx, k])
+		if ed.has("weapon") and not weapons.has(str(ed["weapon"])):
+			_errors.append("evolutions[%d] weapon %s 不存在" % [idx, str(ed["weapon"])])
+		if ed.has("passive") and not passives.has(str(ed["passive"])):
+			_errors.append("evolutions[%d] passive %s 不存在" % [idx, str(ed["passive"])])
+		if ed.has("result") and not weapons.has(str(ed["result"])):
+			_errors.append("evolutions[%d] result %s 不存在" % [idx, str(ed["result"])])
 	# boss 阶段校验（enemies[boss].phases）
 	if enemies.has("boss") and (enemies["boss"] as Dictionary).has("phases"):
 		var phs: Variant = (enemies["boss"] as Dictionary)["phases"]
@@ -386,6 +429,66 @@ static func _default_weapons() -> Dictionary:
 				{"radius": 185.0, "dps": 48.0},
 			],
 		},
+		"boomerang": {
+			"name": "回旋斧", "color": Color(0.52, 0.85, 0.35),
+			"desc": "投掷回旋斧，往返穿透敌人",
+			"levels": [
+				{"count": 1, "dmg": 16.0, "cd": 1.6, "pierce": 2, "speed": 420.0, "return_time": 0.45},
+				{"count": 1, "dmg": 16.0, "cd": 1.5, "pierce": 3, "speed": 430.0, "return_time": 0.45},
+				{"count": 1, "dmg": 20.0, "cd": 1.4, "pierce": 3, "speed": 440.0, "return_time": 0.45},
+				{"count": 2, "dmg": 20.0, "cd": 1.3, "pierce": 3, "speed": 450.0, "return_time": 0.45},
+				{"count": 2, "dmg": 26.0, "cd": 1.2, "pierce": 4, "speed": 460.0, "return_time": 0.45},
+				{"count": 2, "dmg": 32.0, "cd": 1.0, "pierce": 4, "speed": 475.0, "return_time": 0.45},
+				{"count": 3, "dmg": 38.0, "cd": 0.9, "pierce": 5, "speed": 490.0, "return_time": 0.45},
+				{"count": 3, "dmg": 45.0, "cd": 0.8, "pierce": 6, "speed": 500.0, "return_time": 0.45},
+			],
+		},
+		"frost": {
+			"name": "寒霜新星", "color": Color(0.55, 0.75, 1.0),
+			"desc": "周期性冰环冲击，减速敌人",
+			"levels": [
+				{"radius": 110.0, "dmg": 14.0, "cd": 3.2, "slow": 0.30, "slow_time": 1.2},
+				{"radius": 125.0, "dmg": 14.0, "cd": 2.9, "slow": 0.35, "slow_time": 1.3},
+				{"radius": 125.0, "dmg": 20.0, "cd": 2.9, "slow": 0.35, "slow_time": 1.3},
+				{"radius": 140.0, "dmg": 20.0, "cd": 2.6, "slow": 0.40, "slow_time": 1.4},
+				{"radius": 155.0, "dmg": 28.0, "cd": 2.6, "slow": 0.40, "slow_time": 1.5},
+				{"radius": 170.0, "dmg": 36.0, "cd": 2.3, "slow": 0.45, "slow_time": 1.6},
+				{"radius": 185.0, "dmg": 44.0, "cd": 2.0, "slow": 0.50, "slow_time": 1.8},
+				{"radius": 200.0, "dmg": 56.0, "cd": 1.8, "slow": 0.55, "slow_time": 2.0},
+			],
+		},
+		"dagger_evo": {
+			"name": "风暴飞刀·极", "color": Color(0.85, 0.97, 1.0),
+			"desc": "飞刀·进化：数量与穿透质变，风暴席卷",
+			"evo": true,
+			"levels": [
+				{"count": 7, "dmg": 48.0, "cd": 0.38, "pierce": 8},
+			],
+		},
+		"boomerang_evo": {
+			"name": "回旋风暴·极", "color": Color(0.62, 0.95, 0.45),
+			"desc": "回旋斧·进化：四斧齐旋，极速往返",
+			"evo": true,
+			"levels": [
+				{"count": 4, "dmg": 52.0, "cd": 0.65, "pierce": 8, "speed": 520.0, "return_time": 0.4},
+			],
+		},
+		"frost_evo": {
+			"name": "永冬领域·极", "color": Color(0.72, 0.85, 1.0),
+			"desc": "寒霜·进化：超大范围永冻，新星常驻",
+			"evo": true,
+			"levels": [
+				{"radius": 250.0, "dmg": 72.0, "cd": 1.45, "slow": 0.65, "slow_time": 2.8},
+			],
+		},
+		"orbit_evo": {
+			"name": "轨道绞肉机·极", "color": Color(0.88, 0.92, 1.0),
+			"desc": "环刃·进化：八刃超旋，半径质变",
+			"evo": true,
+			"levels": [
+				{"orbs": 9, "dmg": 42.0, "radius": 125.0, "rot": 5.8},
+			],
+		},
 	}
 
 
@@ -397,6 +500,15 @@ static func _default_passives() -> Dictionary:
 		"hp": {"name": "生命祝福", "desc": "生命上限 +25 并回复 25", "max": 5, "color": Color(1.0, 0.5, 0.65)},
 		"magnet": {"name": "磁力祝福", "desc": "拾取范围 +45%", "max": 4, "color": Color(0.55, 0.75, 1.0)},
 	}
+
+
+static func _default_evolutions() -> Array:
+	return [
+		{"weapon": "dagger", "passive": "damage", "need_weapon_lv": 8, "need_passive_lv": 5, "result": "dagger_evo", "name": "风暴飞刀"},
+		{"weapon": "orbit", "passive": "speed", "need_weapon_lv": 8, "need_passive_lv": 4, "result": "orbit_evo", "name": "轨道绞肉机"},
+		{"weapon": "boomerang", "passive": "haste", "need_weapon_lv": 8, "need_passive_lv": 5, "result": "boomerang_evo", "name": "回旋风暴"},
+		{"weapon": "frost", "passive": "magnet", "need_weapon_lv": 8, "need_passive_lv": 4, "result": "frost_evo", "name": "永冬领域"},
+	]
 
 
 static func _default_enemies() -> Dictionary:

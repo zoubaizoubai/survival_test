@@ -219,6 +219,223 @@
           "dps": 48.0
         }
       ]
+    },
+    "boomerang": {
+      "name": "回旋斧",
+      "color": {
+        "r": 0.52,
+        "g": 0.85,
+        "b": 0.35
+      },
+      "desc": "投掷回旋斧，往返穿透敌人",
+      "levels": [
+        {
+          "count": 1,
+          "dmg": 16.0,
+          "cd": 1.6,
+          "pierce": 2,
+          "speed": 420.0,
+          "return_time": 0.45
+        },
+        {
+          "count": 1,
+          "dmg": 16.0,
+          "cd": 1.5,
+          "pierce": 3,
+          "speed": 430.0,
+          "return_time": 0.45
+        },
+        {
+          "count": 1,
+          "dmg": 20.0,
+          "cd": 1.4,
+          "pierce": 3,
+          "speed": 440.0,
+          "return_time": 0.45
+        },
+        {
+          "count": 2,
+          "dmg": 20.0,
+          "cd": 1.3,
+          "pierce": 3,
+          "speed": 450.0,
+          "return_time": 0.45
+        },
+        {
+          "count": 2,
+          "dmg": 26.0,
+          "cd": 1.2,
+          "pierce": 4,
+          "speed": 460.0,
+          "return_time": 0.45
+        },
+        {
+          "count": 2,
+          "dmg": 32.0,
+          "cd": 1.0,
+          "pierce": 4,
+          "speed": 475.0,
+          "return_time": 0.45
+        },
+        {
+          "count": 3,
+          "dmg": 38.0,
+          "cd": 0.9,
+          "pierce": 5,
+          "speed": 490.0,
+          "return_time": 0.45
+        },
+        {
+          "count": 3,
+          "dmg": 45.0,
+          "cd": 0.8,
+          "pierce": 6,
+          "speed": 500.0,
+          "return_time": 0.45
+        }
+      ]
+    },
+    "frost": {
+      "name": "寒霜新星",
+      "color": {
+        "r": 0.55,
+        "g": 0.75,
+        "b": 1.0
+      },
+      "desc": "周期性冰环冲击，减速敌人",
+      "levels": [
+        {
+          "radius": 110.0,
+          "dmg": 14.0,
+          "cd": 3.2,
+          "slow": 0.3,
+          "slow_time": 1.2
+        },
+        {
+          "radius": 125.0,
+          "dmg": 14.0,
+          "cd": 2.9,
+          "slow": 0.35,
+          "slow_time": 1.3
+        },
+        {
+          "radius": 125.0,
+          "dmg": 20.0,
+          "cd": 2.9,
+          "slow": 0.35,
+          "slow_time": 1.3
+        },
+        {
+          "radius": 140.0,
+          "dmg": 20.0,
+          "cd": 2.6,
+          "slow": 0.4,
+          "slow_time": 1.4
+        },
+        {
+          "radius": 155.0,
+          "dmg": 28.0,
+          "cd": 2.6,
+          "slow": 0.4,
+          "slow_time": 1.5
+        },
+        {
+          "radius": 170.0,
+          "dmg": 36.0,
+          "cd": 2.3,
+          "slow": 0.45,
+          "slow_time": 1.6
+        },
+        {
+          "radius": 185.0,
+          "dmg": 44.0,
+          "cd": 2.0,
+          "slow": 0.5,
+          "slow_time": 1.8
+        },
+        {
+          "radius": 200.0,
+          "dmg": 56.0,
+          "cd": 1.8,
+          "slow": 0.55,
+          "slow_time": 2.0
+        }
+      ]
+    },
+    "dagger_evo": {
+      "name": "风暴飞刀·极",
+      "color": {
+        "r": 0.85,
+        "g": 0.97,
+        "b": 1.0
+      },
+      "desc": "飞刀·进化：数量与穿透质变，风暴席卷",
+      "evo": true,
+      "levels": [
+        {
+          "count": 7,
+          "dmg": 48.0,
+          "cd": 0.38,
+          "pierce": 8
+        }
+      ]
+    },
+    "boomerang_evo": {
+      "name": "回旋风暴·极",
+      "color": {
+        "r": 0.62,
+        "g": 0.95,
+        "b": 0.45
+      },
+      "desc": "回旋斧·进化：四斧齐旋，极速往返",
+      "evo": true,
+      "levels": [
+        {
+          "count": 4,
+          "dmg": 52.0,
+          "cd": 0.65,
+          "pierce": 8,
+          "speed": 520.0,
+          "return_time": 0.4
+        }
+      ]
+    },
+    "frost_evo": {
+      "name": "永冬领域·极",
+      "color": {
+        "r": 0.72,
+        "g": 0.85,
+        "b": 1.0
+      },
+      "desc": "寒霜·进化：超大范围永冻，新星常驻",
+      "evo": true,
+      "levels": [
+        {
+          "radius": 250.0,
+          "dmg": 72.0,
+          "cd": 1.45,
+          "slow": 0.65,
+          "slow_time": 2.8
+        }
+      ]
+    },
+    "orbit_evo": {
+      "name": "轨道绞肉机·极",
+      "color": {
+        "r": 0.88,
+        "g": 0.92,
+        "b": 1.0
+      },
+      "desc": "环刃·进化：八刃超旋，半径质变",
+      "evo": true,
+      "levels": [
+        {
+          "orbs": 9,
+          "dmg": 42.0,
+          "radius": 125.0,
+          "rot": 5.8
+        }
+      ]
     }
   },
   "passives": {
@@ -567,8 +784,42 @@
     }
   },
   "_meta": {
-    "version": "1.1",
-    "description": "幸存者数值表 - 集中管理武器/被动/敌人/生成曲线，启动时校验；1.1新增 charger/caster 与波次导演及 Boss 阶段",
+    "version": "1.2",
+    "description": "幸存者数值表 - 集中管理武器/被动/敌人/生成曲线，启动时校验；1.2新增 boomerang/frost 与4条进化",
     "updated": "2026-08-22"
-  }
+  },
+  "evolutions": [
+    {
+      "weapon": "dagger",
+      "passive": "damage",
+      "need_weapon_lv": 8,
+      "need_passive_lv": 5,
+      "result": "dagger_evo",
+      "name": "风暴飞刀"
+    },
+    {
+      "weapon": "boomerang",
+      "passive": "haste",
+      "need_weapon_lv": 8,
+      "need_passive_lv": 5,
+      "result": "boomerang_evo",
+      "name": "回旋风暴"
+    },
+    {
+      "weapon": "frost",
+      "passive": "magnet",
+      "need_weapon_lv": 8,
+      "need_passive_lv": 4,
+      "result": "frost_evo",
+      "name": "永冬领域"
+    },
+    {
+      "weapon": "orbit",
+      "passive": "speed",
+      "need_weapon_lv": 8,
+      "need_passive_lv": 4,
+      "result": "orbit_evo",
+      "name": "轨道绞肉机"
+    }
+  ]
 }
