@@ -1,1 +1,2 @@
 {"id":"int-3e9ebcda115c1c55664d4ced0ab675cd","kind":"field_change","created_at":"2026-08-22T06:04:43.708523Z","actor":"zoubai","issue_id":"survival-7n6","extra":{"field":"status","new_value":"closed","old_value":"in_progress","reason":"已完善 AGENTS.md、验证配置并创建 Git 提交 29c331f。"}}
+{"id":"int-909ad6d43bc7f4f904a42310dd48c6ae","kind":"field_change","created_at":"2026-08-22T06:16:54.791517Z","actor":"zoubai","issue_id":"survival-8vf","extra":{"field":"status","new_value":"closed","old_value":"in_progress","reason":"AGENTS.md 已中文化并补充任务关闭与 Git 提交顺序，文档格式检查通过。"}}
