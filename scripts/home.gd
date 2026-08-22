@@ -1,17 +1,24 @@
 extends Control
 
 const Settings := preload("res://scripts/settings.gd")
+const SaveData := preload("res://scripts/save_data.gd")
+const GameData := preload("res://scripts/game_data.gd")
 
 var settings_layer: Control
 var volume_slider: HSlider
 var volume_label: Label
 var shake_check: CheckBox
 var fps_check: CheckBox
+var stats_label: Label
+var unlock_label: Label
 
 
 func _ready() -> void:
 	Settings.ensure_loaded()
+	SaveData.ensure_loaded()
+	GameData.ensure_loaded()
 	_build_settings_layer()
+	_build_stats_display()
 	# 确保按钮存在时连接（tscn 已有连接，此处补充以防动态创建）
 	var start_btn: Button = get_node_or_null("CenterContainer/VBoxContainer/StartButton") as Button
 	var settings_btn: Button = get_node_or_null("CenterContainer/VBoxContainer/SettingsButton") as Button
@@ -30,6 +37,80 @@ func _ready() -> void:
 	_on_viewport_resized()
 	# 应用已保存设置
 	Settings.ensure_loaded()
+
+
+func _build_stats_display() -> void:
+	var vbox: VBoxContainer = get_node_or_null("CenterContainer/VBoxContainer") as VBoxContainer
+	if vbox == null:
+		return
+	# 避免重复创建
+	if has_node("CenterContainer/VBoxContainer/StatsLabel"):
+		stats_label = get_node("CenterContainer/VBoxContainer/StatsLabel") as Label
+	else:
+		stats_label = Label.new()
+		stats_label.name = "StatsLabel"
+		stats_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		stats_label.add_theme_font_size_override("font_size", 13)
+		stats_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.72))
+		stats_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		# 插入在 Title 之后，按钮之前
+		var title_idx: int = 0
+		for i in vbox.get_child_count():
+			if vbox.get_child(i).name == "Title":
+				title_idx = i
+				break
+		vbox.add_child(stats_label)
+		vbox.move_child(stats_label, title_idx + 1)
+	if has_node("CenterContainer/VBoxContainer/UnlockLabel"):
+		unlock_label = get_node("CenterContainer/VBoxContainer/UnlockLabel") as Label
+	else:
+		unlock_label = Label.new()
+		unlock_label.name = "UnlockLabel"
+		unlock_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		unlock_label.add_theme_font_size_override("font_size", 12)
+		unlock_label.add_theme_color_override("font_color", Color(0.85, 0.9, 1.0, 0.65))
+		unlock_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		vbox.add_child(unlock_label)
+		# 放在 Stats 之后
+		if stats_label:
+			vbox.move_child(unlock_label, stats_label.get_index() + 1)
+	_refresh_stats_display()
+
+
+func _refresh_unlock_info() -> void:
+	var info: Label = get_node_or_null("SettingsLayer/CenterContainer/PanelContainer/VBoxContainer/UnlockInfo") as Label
+	if info == null:
+		return
+	var prog: Dictionary = SaveData.get_unlock_progress()
+	var lines: Array = []
+	for uid in prog.keys():
+		var u: Dictionary = prog[uid] as Dictionary
+		var unlocked: bool = bool(u.get("unlocked", false))
+		var desc: String = str(u.get("desc", ""))
+		var name: String = str(u.get("name", uid))
+		lines.append("%s: %s [%s]" % [name, desc, "已解锁" if unlocked else "未解锁"])
+	info.text = "\n".join(lines)
+
+
+func _refresh_stats_display() -> void:
+	if stats_label == null:
+		return
+	var best: Dictionary = SaveData.get_best()
+	var totals: Dictionary = SaveData.get_totals()
+	var bt: float = float(best.get("time", 0.0))
+	if bt > 0.01:
+		stats_label.text = "最佳 %d:%02d · 击杀 %d · 等级 %d · 累计击杀 %d" % [floori(bt / 60.0), int(bt) % 60, int(best.get("kills", 0)), int(best.get("level", 1)), int(totals.get("total_kills", 0))]
+	else:
+		stats_label.text = "累计击杀 %d · 局数 %d — 存活 90s 解锁寒霜，40 击杀解锁回旋斧" % [int(totals.get("total_kills", 0)), int(totals.get("total_games", 0))]
+	if unlock_label:
+		var prog: Dictionary = SaveData.get_unlock_progress()
+		var parts: Array = []
+		for uid in prog.keys():
+			var info: Dictionary = prog[uid] as Dictionary
+			var unlocked: bool = bool(info.get("unlocked", false))
+			var name: String = str(info.get("name", uid))
+			parts.append("%s[%s]" % [name, "✓" if unlocked else "✗"])
+		unlock_label.text = "解锁: " + " · ".join(parts) if not parts.is_empty() else ""
 
 
 func _on_viewport_resized() -> void:
@@ -157,6 +238,45 @@ func _build_settings_layer() -> void:
 	vbox.add_child(fps_row)
 	vbox.add_child(_make_separator())
 	# 按钮行
+	# 解锁进度与清除存档
+	vbox.add_child(_make_separator())
+	var unlock_title := Label.new()
+	unlock_title.text = "进 度"
+	unlock_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	unlock_title.add_theme_font_size_override("font_size", 14)
+	unlock_title.add_theme_color_override("font_color", Color(0.85, 0.9, 1.0, 0.75))
+	vbox.add_child(unlock_title)
+	var unlock_info := Label.new()
+	unlock_info.name = "UnlockInfo"
+	unlock_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	unlock_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	unlock_info.add_theme_font_size_override("font_size", 12)
+	unlock_info.add_theme_color_override("font_color", Color(1, 1, 1, 0.65))
+	vbox.add_child(unlock_info)
+	var clear_btn := Button.new()
+	clear_btn.text = "清除存档"
+	clear_btn.custom_minimum_size = Vector2(140, 38)
+	clear_btn.focus_mode = Control.FOCUS_ALL
+	clear_btn.add_theme_font_size_override("font_size", 12)
+	var sb_clear := StyleBoxFlat.new()
+	sb_clear.bg_color = Color(0.95, 0.35, 0.35, 0.12)
+	sb_clear.set_corner_radius_all(8)
+	sb_clear.set_border_width_all(1)
+	sb_clear.border_color = Color(0.95, 0.35, 0.35, 0.35)
+	clear_btn.add_theme_stylebox_override("normal", sb_clear)
+	clear_btn.add_theme_stylebox_override("hover", sb_clear)
+	clear_btn.add_theme_stylebox_override("pressed", sb_clear)
+	clear_btn.pressed.connect(func():
+		SaveData.clear()
+		_refresh_stats_display()
+		_refresh_unlock_info()
+	)
+	var cc := CenterContainer.new()
+	cc.add_child(clear_btn)
+	vbox.add_child(cc)
+	# 初始化解锁信息
+	call_deferred("_refresh_unlock_info")
+	vbox.add_child(_make_separator())
 	var btn_row := HBoxContainer.new()
 	btn_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	btn_row.add_theme_constant_override("separation", 12)
@@ -253,6 +373,7 @@ func _show_settings() -> void:
 	if settings_layer == null:
 		_build_settings_layer()
 	settings_layer.visible = true
+	_refresh_unlock_info()
 	# 同步最新值
 	volume_slider.value = Settings.master_volume
 	shake_check.button_pressed = Settings.shake_enabled
@@ -268,6 +389,12 @@ func _hide_settings() -> void:
 	var start_btn: Button = get_node_or_null("CenterContainer/VBoxContainer/StartButton") as Button
 	if start_btn:
 		start_btn.grab_focus()
+
+
+func _center(n: Control) -> CenterContainer:
+	var cc := CenterContainer.new()
+	cc.add_child(n)
+	return cc
 
 
 func _unhandled_input(event: InputEvent) -> void:

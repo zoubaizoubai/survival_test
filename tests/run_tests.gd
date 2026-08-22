@@ -106,6 +106,7 @@ func _run_all() -> void:
 	await _test_state_mutex_and_recovery()
 	await _test_enemy_behaviors_and_director()
 	await _test_weapon_evolution_and_builds()
+	await _test_stats_and_save()
 	# 确保所有异步清理完成
 	await process_frame
 	await process_frame
@@ -1198,7 +1199,160 @@ func _test_weapon_evolution_and_builds() -> void:
 	await process_frame
 
 
+func _test_stats_and_save() -> void:
+	print("\n[SMOKE] 局内统计与存档解锁")
+	var SaveDataRef: GDScript = preload("res://scripts/save_data.gd")
+	var gd: GDScript = preload("res://scripts/game_data.gd")
+	gd.ensure_loaded()
+	SaveDataRef.ensure_loaded()
+	# 清理存档以获可重复起点
+	SaveDataRef.clear()
+	await process_frame
+	# 1. 初始存档为空，最佳为 0，解锁均未达成
+	var best0: Dictionary = SaveDataRef.get_best()
+	_assert(is_equal_approx(float(best0["time"]), 0.0), "初始最佳时间为 0", "实际 %s" % str(best0["time"]))
+	_assert(int(best0["kills"]) == 0, "初始最佳击杀 0", "实际 %d" % int(best0["kills"]))
+	var prog0: Dictionary = SaveDataRef.get_unlock_progress()
+	_assert(not bool(prog0["boomerang"]["unlocked"]), "初始 boomerang 未解锁", "已解锁")
+	_assert(not bool(prog0["frost"]["unlocked"]), "初始 frost 未解锁", "已解锁")
+	# 验证锁定武器不在候选（boomerang/frost  locked）
+	var ps: PackedScene = load("res://scenes/game.tscn") as PackedScene
+	var g: Node = ps.instantiate()
+	root.add_child(g)
+	await process_frame
+	await process_frame
+	var has_locked_in_early: bool = false
+	for iter in 10:
+		var cands: Array = g._roll_cards()
+		for c in cands:
+			if c["kind"] == "weapon_new" and (str(c["id"]) == "boomerang" or str(c["id"]) == "frost"):
+				has_locked_in_early = true
+				break
+	_assert(not has_locked_in_early, "未解锁时 boomerang/frost 不应出现在候选", "异常出现")
+	# 2. 模拟游戏统计：伤害、承伤、击杀与构筑被正确记录
+	var player: Node = g.get("player") as Node
+	# 制造伤害统计：通过 hurt_enemy 累计
+	g.total_damage = 0.0
+	g.taken_damage = 0.0
+	g.kills = 5
+	g.elapsed = 95.0
+	player.weapons.clear()
+	player.add_weapon("dagger")
+	player.weapons["dagger"]["lv"] = 3
+	player.passives["damage"] = 2
+	# 模拟对敌人造成伤害
+	g._spawn_at("slime", player.global_position + Vector2(30, 0))
+	await process_frame
+	var e: Node = g.get_tree().get_nodes_in_group("enemies")[0] as Node
+	var hp_before: float = float(e.get("hp"))
+	g.hurt_enemy(e, 10.0, Vector2.ZERO)
+	_assert(g.total_damage > 9.0, "hurt_enemy 累计 total_damage", "total=%.1f" % g.total_damage)
+	# 模拟承伤
+	var hp_p_before: float = float(player.get("hp"))
+	player.hurt(12.0)
+	await process_frame
+	_assert(g.taken_damage > 11.0, "player hurt 累计 taken_damage", "taken=%.1f" % g.taken_damage)
+	# 收集 stats
+	var stats: Dictionary = g._collect_stats()
+	_assert(int(stats["kills"]) >= 5 and int(stats["kills"]) <= 6, "stats 击杀 5-6（允许自动击杀1）", "实际 %d" % int(stats["kills"]))
+	_assert(absf(float(stats["time"]) - 95.0) < 0.5, "stats 时间约 95", "实际 %.3f" % float(stats["time"]))
+	_assert(float(stats["damage"]) > 9.0, "stats 伤害一致", "damage=%.1f" % float(stats["damage"]))
+	_assert(float(stats["taken"]) > 11.0, "stats 承伤一致", "taken=%.1f" % float(stats["taken"]))
+	var build: Dictionary = stats["build"] as Dictionary
+	_assert((build["weapons"] as Dictionary).has("dagger"), "stats 构筑含 dagger", "缺失")
+	# 3. 跨局保存：record_game 更新最佳并持久化
+	var newly1: Array = SaveDataRef.record_game(stats)
+	var best1: Dictionary = SaveDataRef.get_best()
+	_assert(absf(float(best1["time"]) - 95.0) < 0.5, "record后最佳时间约95", "实际 %.3f" % float(best1["time"]))
+	_assert(int(best1["kills"]) >= 5 and int(best1["kills"]) <= 6, "record后最佳击杀 5-6", "实际 %d" % int(best1["kills"]))
+	# boomerang 需 40 累计击杀，当前 total 5 不应解锁
+	_assert(not bool(SaveDataRef.get_unlock_progress()["boomerang"]["unlocked"]), "5 击杀不解锁 boomerang", "已解锁")
+	# 再次记录大额击杀以触发 boomerang
+	g.kills = 40
+	g.total_damage += 500.0
+	var stats2: Dictionary = g._collect_stats()
+	stats2["kills"] = 40
+	var newly2: Array = SaveDataRef.record_game(stats2)
+	var unlocked_boomer: bool = bool(SaveDataRef.is_unlocked("boomerang"))
+	_assert(unlocked_boomer, "累计40击杀解锁 boomerang", "未解锁")
+	if unlocked_boomer:
+		_assert("boomerang" in newly2 or SaveDataRef.is_weapon_unlocked("boomerang"), "解锁返回包含 boomerang", "newly=%s" % str(newly2))
+	# frost 需 best_time 90，95 已满足，应已解锁
+	var unlocked_frost: bool = bool(SaveDataRef.is_unlocked("frost"))
+	_assert(unlocked_frost, "95s 存活解锁 frost", "未解锁")
+	# 解锁后，候选应可出现新武器
+	var found_after: bool = false
+	for iter in 15:
+		var cands2: Array = g._roll_cards()
+		for c in cands2:
+			if c["kind"] == "weapon_new" and (str(c["id"]) == "boomerang" or str(c["id"]) == "frost"):
+				found_after = true
+				break
+		if found_after:
+			break
+	_assert(found_after, "解锁后新武器可出现在候选", "仍未出现")
+	# 4. 结算页展示关键统计与构筑：验证 end_stats 文本含伤害/承伤/构筑/最佳
+	var menus: Control = g.get("menus") as Control
+	menus.show_end(true, 95.0, 40, 7, stats2, newly2)
+	await process_frame
+	var end_text: String = str(menus.get("end_stats").text)
+	_assert(end_text.contains("伤害"), "结算含伤害", "text=%s" % end_text)
+	_assert(end_text.contains("承伤"), "结算含承伤", "text=%s" % end_text)
+	_assert(end_text.contains("构筑"), "结算含构筑", "text=%s" % end_text)
+	_assert(end_text.contains("最佳") or end_text.contains("击杀"), "结算含最佳或击杀", "text=%s" % end_text)
+	# 解锁提示
+	if not newly2.is_empty():
+		_assert(end_text.contains("解锁"), "结算含解锁提示", "text=%s" % end_text)
+	# 5. 存档损坏回退：写入非法内容后 ensure_loaded 应回退默认值而不崩溃
+	var cfg_path: String = "user://progress.cfg"
+	# 备份原文件
+	var orig_text: String = ""
+	if FileAccess.file_exists(cfg_path):
+		var f: FileAccess = FileAccess.open(cfg_path, FileAccess.READ)
+		if f != null:
+			orig_text = f.get_as_text()
+			f.close()
+	# 写入损坏内容
+	var wf: FileAccess = FileAccess.open(cfg_path, FileAccess.WRITE)
+	if wf != null:
+		wf.store_string("corrupted [[[ not cfg")
+		wf.close()
+	# 强制重载
+	SaveDataRef._loaded = false
+	SaveDataRef.ensure_loaded()
+	var best_corrupt: Dictionary = SaveDataRef.get_best()
+	_assert(best_corrupt is Dictionary, "损坏后仍可读取 best", "nil")
+	# 恢复原存档并清理
+	if orig_text != "":
+		var rf: FileAccess = FileAccess.open(cfg_path, FileAccess.WRITE)
+		if rf != null:
+			rf.store_string(orig_text)
+			rf.close()
+	else:
+		if FileAccess.file_exists(cfg_path):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(cfg_path))
+	SaveDataRef._loaded = false
+	SaveDataRef.ensure_loaded()
+	# 6. 清除存档入口：clear 后最佳与解锁重置，且再次持久化
+	SaveDataRef.clear()
+	await process_frame
+	var best_cleared: Dictionary = SaveDataRef.get_best()
+	_assert(is_equal_approx(float(best_cleared["time"]), 0.0), "clear 后最佳时间清零", "实际 %.1f" % float(best_cleared["time"]))
+	_assert(not SaveDataRef.is_unlocked("boomerang"), "clear 后 boomerang 重置未解锁", "仍解锁")
+	var totals_cleared: Dictionary = SaveDataRef.get_totals()
+	_assert(int(totals_cleared["total_games"]) == 0, "clear 后局数清零", "实际 %d" % int(totals_cleared["total_games"]))
+	# 清理游戏实例并重置 Home 显示
+	menus.hide_end()
+	g.get_tree().paused = false
+	g.queue_free()
+	await process_frame
+	await process_frame
+	# 重建一次存档以便后续测试不受污染（保持空状态）
+	SaveDataRef.clear()
+
+
 func _test_lightning_range() -> void:
+
 	print("\n[SMOKE] 雷霆范围回归")
 	var ps: PackedScene = load("res://scenes/game.tscn") as PackedScene
 	var g: Node = ps.instantiate()

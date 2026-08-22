@@ -275,20 +275,56 @@ func toggle_pause() -> void:
 						break
 
 
-func show_end(win: bool, time_sec: float, kills: int, level: int) -> void:
+func show_end(win: bool, time_sec: float, kills: int, level: int, stats: Dictionary = {}, newly: Array = []) -> void:
 	if upgrade_layer.visible:
 		upgrade_layer.visible = false
 	if pause_layer.visible:
 		pause_layer.visible = false
+	var tstr: String = "%d:%02d" % [floori(time_sec / 60.0), int(time_sec) % 60]
+	if stats.is_empty():
+		# 兼容旧调用：构造最小 stats
+		stats = {"time": time_sec, "kills": kills, "level": level, "damage": 0.0, "taken": 0.0, "build": {"weapons": {}, "passives": {}}}
+	var dmg: float = float(stats.get("damage", 0.0))
+	var taken: float = float(stats.get("taken", 0.0))
+	var build: Dictionary = stats.get("build", {}) as Dictionary
+	var weapons: Dictionary = build.get("weapons", {}) as Dictionary
+	var passives: Dictionary = build.get("passives", {}) as Dictionary
+	var build_str: String = ""
+	if not weapons.is_empty() or not passives.is_empty():
+		var wparts: Array = []
+		for wid in weapons.keys():
+			var lv: int = int((weapons[wid] as Dictionary).get("lv", 1))
+			var wname: String = str(game.WEAPONS[wid].get("name", wid)) if game.WEAPONS.has(wid) else wid
+			wparts.append("%sLv%d" % [wname, lv])
+		var pparts: Array = []
+		for pid in passives.keys():
+			pparts.append("%s%d" % [pid, int(passives[pid])])
+		build_str = "\n构筑: " + ", ".join(wparts)
+		if not pparts.is_empty():
+			build_str += " | " + ", ".join(pparts)
+	# 最佳记录（若可用）
+	var best_str: String = ""
+	var SaveDataRef: GDScript = preload("res://scripts/save_data.gd")
+	SaveDataRef.ensure_loaded()
+	var best: Dictionary = SaveDataRef.get_best()
+	if float(best.get("time", 0.0)) > 0.0:
+		best_str = "\n最佳: %d:%02d · 击杀%d · Lv%d" % [floori(float(best["time"]) / 60.0), int(float(best["time"])) % 60, int(best["kills"]), int(best["level"])]
+	var unlock_str: String = ""
+	if not newly.is_empty():
+		var names: Array = []
+		for uid in newly:
+			var ud: Dictionary = SaveDataRef.get_unlock_progress().get(uid, {}) as Dictionary
+			names.append(str(ud.get("name", uid)))
+		unlock_str = "\n解锁: " + ", ".join(names)
 	if win:
 		end_title.text = "胜 利 ！"
 		end_title.add_theme_color_override("font_color", Color(1.0, 0.85, 0.3))
-		end_stats.text = "你坚持了 %d:%02d · 击杀 %d · 等级 %d" % [floori(time_sec / 60.0), int(time_sec) % 60, kills, level]
+		end_stats.text = "你坚持了 %s · 击杀 %d · 等级 %d\n伤害 %.0f · 承伤 %.0f%s%s%s" % [tstr, kills, level, dmg, taken, build_str, best_str, unlock_str]
 		endless_btn.visible = true
 	else:
 		end_title.text = "你倒下了…"
 		end_title.add_theme_color_override("font_color", Color(0.95, 0.4, 0.4))
-		end_stats.text = "幸存 %d:%02d · 击杀 %d · 等级 %d" % [floori(time_sec / 60.0), int(time_sec) % 60, kills, level]
+		end_stats.text = "幸存 %s · 击杀 %d · 等级 %d\n伤害 %.0f · 承伤 %.0f%s%s%s" % [tstr, kills, level, dmg, taken, build_str, best_str, unlock_str]
 		endless_btn.visible = false
 	end_layer.visible = true
 	_update_layout()

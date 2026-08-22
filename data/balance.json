@@ -293,7 +293,9 @@
           "speed": 500.0,
           "return_time": 0.45
         }
-      ]
+      ],
+      "locked": true,
+      "unlock_id": "boomerang"
     },
     "frost": {
       "name": "寒霜新星",
@@ -360,7 +362,9 @@
           "slow": 0.55,
           "slow_time": 2.0
         }
-      ]
+      ],
+      "locked": true,
+      "unlock_id": "frost"
     },
     "dagger_evo": {
       "name": "风暴飞刀·极",
@@ -784,8 +788,8 @@
     }
   },
   "_meta": {
-    "version": "1.2",
-    "description": "幸存者数值表 - 集中管理武器/被动/敌人/生成曲线，启动时校验；1.2新增 boomerang/frost 与4条进化",
+    "version": "1.3",
+    "description": "幸存者数值表 - 1.3新增轻量解锁（boomerang/frost）与统计",
     "updated": "2026-08-22"
   },
   "evolutions": [
@@ -821,5 +825,28 @@
       "result": "orbit_evo",
       "name": "轨道绞肉机"
     }
-  ]
+  ],
+  "unlocks": {
+    "boomerang": {
+      "name": "回旋斧",
+      "desc": "累计击杀 40 敌人解锁",
+      "kind": "total_kills",
+      "need": 40,
+      "unlocks_weapon": "boomerang"
+    },
+    "frost": {
+      "name": "寒霜新星",
+      "desc": "单局存活 90 秒解锁",
+      "kind": "best_time",
+      "need": 90.0,
+      "unlocks_weapon": "frost"
+    },
+    "veteran": {
+      "name": "老兵徽记",
+      "desc": "单局击杀 80 敌人解锁（外观）",
+      "kind": "kills",
+      "need": 80,
+      "unlocks_cosmetic": "veteran_badge"
+    }
+  }
 }

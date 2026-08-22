@@ -10,6 +10,7 @@ const HudScript := preload("res://scripts/hud.gd")
 const MenusScript := preload("res://scripts/menus.gd")
 const JoystickScript := preload("res://scripts/joystick.gd")
 const SfxScript := preload("res://scripts/sfx.gd")
+const SaveData := preload("res://scripts/save_data.gd")
 
 const GameData := preload("res://scripts/game_data.gd")
 const Settings := preload("res://scripts/settings.gd")
@@ -52,6 +53,8 @@ var running := true
 var ended := false
 var endless := false
 var pending_levels := 0
+var total_damage := 0.0
+var taken_damage := 0.0
 var spawn_t := 1.0
 var elite_t := 45.0
 var boss_idx := 0
@@ -72,6 +75,7 @@ func _ready() -> void:
 	var _gd_errs: Array = GameData.get_errors()
 	for e in _gd_errs:
 		push_error("[GameData] %s" % str(e))
+	SaveData.ensure_loaded()
 	var _gd_warns: Array = GameData.get_warnings()
 	for w in _gd_warns:
 		push_warning("[GameData] %s" % str(w))
@@ -358,7 +362,9 @@ func _spawn_at(kind: String, pos: Vector2) -> void:
 func hurt_enemy(e: Node2D, dmg: float, kdir: Vector2 = Vector2.ZERO) -> void:
 	if ended or not is_instance_valid(e) or e.dead:
 		return
-	e.take_hit(dmg * player.damage_mult(), kdir)
+	var real: float = dmg * player.damage_mult()
+	total_damage += real
+	e.take_hit(real, kdir)
 
 
 func spawn_damage_text(pos: Vector2, text_value: String, color_value: Color = Color(1, 1, 1)) -> void:
@@ -650,6 +656,8 @@ func _roll_cards() -> Array:
 		var winfo: Dictionary = WEAPONS[id] as Dictionary
 		if winfo.get("evo", false):
 			continue
+		if not SaveData.is_weapon_unlocked(id):
+			continue
 		if not player.weapons.has(id):
 			if player.weapons.size() < 4:
 				cands.append({"kind": "weapon_new", "id": id})
@@ -727,6 +735,25 @@ func _apply_card(c: Dictionary) -> void:
 			player.heal(40)
 
 
+func add_taken(dmg: float) -> void:
+	taken_damage += dmg
+
+
+func _collect_stats() -> Dictionary:
+	var build: Dictionary = {
+		"weapons": player.weapons.duplicate(true),
+		"passives": player.passives.duplicate(true),
+	}
+	return {
+		"time": elapsed,
+		"kills": kills,
+		"level": player.level,
+		"damage": total_damage,
+		"taken": taken_damage,
+		"build": build,
+	}
+
+
 func _win() -> void:
 	if ended:
 		return
@@ -737,7 +764,9 @@ func _win() -> void:
 	if menus.pause_layer.visible:
 		menus.pause_layer.visible = false
 	get_tree().paused = true
-	menus.show_end(true, elapsed, kills, player.level)
+	var stats: Dictionary = _collect_stats()
+	var newly: Array = SaveData.record_game(stats)
+	menus.show_end(true, elapsed, kills, player.level, stats, newly)
 
 
 func _lose() -> void:
@@ -752,7 +781,9 @@ func _lose() -> void:
 	get_tree().paused = true
 	shake = 12.0
 	spawn_burst(player.position, Color(0.4, 0.85, 1.0), 60)
-	menus.show_end(false, elapsed, kills, player.level)
+	var stats2: Dictionary = _collect_stats()
+	var newly2: Array = SaveData.record_game(stats2)
+	menus.show_end(false, elapsed, kills, player.level, stats2, newly2)
 
 
 func continue_endless() -> void:

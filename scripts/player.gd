@@ -114,6 +114,8 @@ func hurt(dmg: float) -> void:
 	if dead or invuln > 0.0 or game.ended:
 		return
 	hp -= dmg
+	if game and game.has_method("add_taken"):
+		game.add_taken(dmg)
 	invuln = 0.45
 	game.shake = 6.0
 	game.sfx.play("hurt")

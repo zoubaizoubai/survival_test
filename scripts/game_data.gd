@@ -11,6 +11,7 @@ static var passives: Dictionary = {}
 static var enemies: Dictionary = {}
 static var spawn: Dictionary = {}
 static var evolutions: Array = []
+static var unlocks: Dictionary = {}
 static var arena: float = 2600.0
 static var goal_time: float = 300.0
 static var max_enemies: int = 170
@@ -72,6 +73,7 @@ static func _load_all() -> void:
 	enemies = _parse_enemies(dict.get("enemies", {}))
 	spawn = dict.get("spawn", {}) as Dictionary
 	evolutions = _parse_evolutions(dict.get("evolutions", []))
+	unlocks = _parse_unlocks(dict.get("unlocks", {}))
 	# 兼容：若 spawn 为空则回退
 	if spawn.is_empty():
 		_warnings.append("spawn 为空，使用内置默认值")
@@ -90,6 +92,7 @@ static func _load_defaults() -> void:
 	enemies = _default_enemies()
 	spawn = _default_spawn()
 	evolutions = _default_evolutions()
+	unlocks = _default_unlocks()
 	arena = float(spawn["arena"])
 	goal_time = float(spawn["goal_time"])
 	max_enemies = int(spawn["max_enemies"])
@@ -128,6 +131,10 @@ static func _parse_weapons(raw: Variant) -> Dictionary:
 		}
 		if wd.has("evo"):
 			entry["evo"] = bool(wd["evo"])
+		if wd.has("locked"):
+			entry["locked"] = bool(wd["locked"])
+		if wd.has("unlock_id"):
+			entry["unlock_id"] = str(wd["unlock_id"])
 		out[id] = entry
 	if out.is_empty():
 		_warnings.append("weapons 为空，回退默认值")
@@ -180,6 +187,29 @@ static func _parse_evolutions(raw: Variant) -> Array:
 	if out.is_empty():
 		_warnings.append("evolutions 为空，使用默认值")
 		return _default_evolutions()
+	return out
+
+
+static func _parse_unlocks(raw: Variant) -> Dictionary:
+	var out: Dictionary = {}
+	if not raw is Dictionary:
+		if raw is Array and (raw as Array).is_empty():
+			return _default_unlocks()
+		_errors.append("unlocks 非 Dictionary")
+		return _default_unlocks()
+	for id in (raw as Dictionary).keys():
+		var v: Variant = (raw as Dictionary)[id]
+		if not v is Dictionary:
+			_errors.append("unlocks[%s] 非 Dictionary" % str(id))
+			continue
+		var d: Dictionary = v as Dictionary
+		if not d.has("name") or not d.has("desc"):
+			_errors.append("unlocks[%s] 缺少 name/desc" % str(id))
+			continue
+		out[id] = d.duplicate(true)
+	if out.is_empty():
+		_warnings.append("unlocks 为空，使用默认值")
+		return _default_unlocks()
 	return out
 
 
@@ -354,6 +384,11 @@ static func _validate() -> void:
 			_errors.append("evolutions[%d] passive %s 不存在" % [idx, str(ed["passive"])])
 		if ed.has("result") and not weapons.has(str(ed["result"])):
 			_errors.append("evolutions[%d] result %s 不存在" % [idx, str(ed["result"])])
+	# 解锁校验
+	for id in unlocks.keys():
+		var u: Dictionary = unlocks[id] as Dictionary
+		if not u.has("kind") or not u.has("need"):
+			_errors.append("unlocks[%s] 缺少 kind/need" % str(id))
 	# boss 阶段校验（enemies[boss].phases）
 	if enemies.has("boss") and (enemies["boss"] as Dictionary).has("phases"):
 		var phs: Variant = (enemies["boss"] as Dictionary)["phases"]
@@ -509,6 +544,14 @@ static func _default_evolutions() -> Array:
 		{"weapon": "boomerang", "passive": "haste", "need_weapon_lv": 8, "need_passive_lv": 5, "result": "boomerang_evo", "name": "回旋风暴"},
 		{"weapon": "frost", "passive": "magnet", "need_weapon_lv": 8, "need_passive_lv": 4, "result": "frost_evo", "name": "永冬领域"},
 	]
+
+
+static func _default_unlocks() -> Dictionary:
+	return {
+		"boomerang": {"name": "回旋斧", "desc": "累计击杀 40 敌人解锁", "kind": "total_kills", "need": 40, "unlocks_weapon": "boomerang"},
+		"frost": {"name": "寒霜新星", "desc": "单局存活 90 秒解锁", "kind": "best_time", "need": 90.0, "unlocks_weapon": "frost"},
+		"veteran": {"name": "老兵徽记", "desc": "单局击杀 80 敌人解锁（外观）", "kind": "kills", "need": 80, "unlocks_cosmetic": "veteran_badge"},
+	}
 
 
 static func _default_enemies() -> Dictionary:
