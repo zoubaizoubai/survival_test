@@ -23,7 +23,7 @@ var _xp_bar: Control
 var _xp_trough: Control
 var _weapon_row: HBoxContainer
 var _kill_icon: TextureRect
-var _time_bg: NinePatchRect
+var _time_bg: PanelContainer
 
 
 func _ready() -> void:
@@ -48,21 +48,26 @@ func _ready() -> void:
 	_hp_bg.add_child(hp_label)
 	add_child(_hp_bg)
 
-	_time_bg = NinePatchRect.new()
-	_time_bg.texture = UiStyle.tex("res://assets/ui/panel.png")
-	_time_bg.patch_margin_left = 48
-	_time_bg.patch_margin_right = 48
-	_time_bg.patch_margin_top = 40
-	_time_bg.patch_margin_bottom = 40
-	_time_bg.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
-	_time_bg.offset_left = -78
-	_time_bg.offset_right = 78
-	_time_bg.offset_top = 6
-	_time_bg.offset_bottom = 52
+	_time_bg = PanelContainer.new()
+	_time_bg.name = "TimeBg"
 	_time_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var time_sb := StyleBoxFlat.new()
+	time_sb.bg_color = Color(0.12, 0.09, 0.07, 0.88)
+	time_sb.set_corner_radius_all(14)
+	time_sb.set_border_width_all(2)
+	time_sb.border_color = Color(0.96, 0.90, 0.78, 0.65)
+	time_sb.content_margin_left = 18
+	time_sb.content_margin_right = 18
+	time_sb.content_margin_top = 6
+	time_sb.content_margin_bottom = 6
+	_time_bg.add_theme_stylebox_override("panel", time_sb)
+	_time_bg.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	_time_bg.offset_left = -70
+	_time_bg.offset_right = 70
+	_time_bg.offset_top = 10
+	_time_bg.offset_bottom = 50
 	add_child(_time_bg)
-	time_label = _make_label("00:00", 26, UiStyle.INK, false)
-	time_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	time_label = _make_label("00:00", 26, Color(1.0, 0.96, 0.88), true)
 	time_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	time_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_time_bg.add_child(time_label)
@@ -205,8 +210,10 @@ func _update_layout() -> void:
 	if boss_bar:
 		boss_bar.position = Vector2((vp.x - boss_bar.size.x) * 0.5, 58)
 	if _time_bg:
-		_time_bg.offset_left = -78
-		_time_bg.offset_right = 78
+		_time_bg.offset_left = -70
+		_time_bg.offset_right = 70
+		_time_bg.offset_top = 10
+		_time_bg.offset_bottom = 50
 
 
 func _make_framed_bar(bar_name: String, frame_path: String, bar_size: Vector2, fill_color: Color) -> Dictionary:
@@ -216,6 +223,13 @@ func _make_framed_bar(bar_name: String, frame_path: String, bar_size: Vector2, f
 	wrap.size = bar_size
 	wrap.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	wrap.clip_contents = true
+	var frame := TextureRect.new()
+	frame.texture = UiStyle.tex(frame_path)
+	frame.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	frame.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	frame.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	wrap.add_child(frame)
 	var trough := Control.new()
 	trough.name = "Trough"
 	trough.clip_contents = true
@@ -225,13 +239,6 @@ func _make_framed_bar(bar_name: String, frame_path: String, bar_size: Vector2, f
 	fill.color = fill_color
 	fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	trough.add_child(fill)
-	var frame := TextureRect.new()
-	frame.texture = UiStyle.tex(frame_path)
-	frame.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	frame.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	frame.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	wrap.add_child(frame)
 	_layout_trough(wrap, trough)
 	return {"wrap": wrap, "trough": trough, "fill": fill}
 
@@ -240,9 +247,9 @@ func _layout_trough(wrap: Control, trough: Control) -> void:
 	if wrap == null or trough == null:
 		return
 	var s: Vector2 = wrap.size
-	# 木框贴图左右有心/星装饰，填充只落在中间奶油槽里
-	trough.position = Vector2(s.x * 0.22, s.y * 0.40)
-	trough.size = Vector2(s.x * 0.70, s.y * 0.22)
+	# 木框贴图左右有心/星装饰，填充盖在中间奶油槽上（贴图槽是不透明的）
+	trough.position = Vector2(s.x * 0.205, s.y * 0.36)
+	trough.size = Vector2(s.x * 0.72, s.y * 0.30)
 
 
 func _set_fill(fill: ColorRect, trough: Control, pct: float) -> void:
