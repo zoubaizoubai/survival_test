@@ -104,6 +104,7 @@ func _run_all() -> void:
 	await _test_spawn_clamp_and_caps()
 	await _test_lightning_range()
 	await _test_state_mutex_and_recovery()
+	await _test_enemy_behaviors_and_director()
 	# 确保所有异步清理完成
 	await process_frame
 	await process_frame
@@ -831,7 +832,7 @@ func _test_data_driven() -> void:
 	# 武器、被动、敌人数量保持一致
 	_assert(gd.weapons.size() == 4, "武器数量 4", "实际 %d" % gd.weapons.size())
 	_assert(gd.passives.size() == 5, "被动数量 5", "实际 %d" % gd.passives.size())
-	_assert(gd.enemies.size() == 5, "敌人种类 5", "实际 %d" % gd.enemies.size())
+	_assert(gd.enemies.size() == 7, "敌人种类 7（含 charger/caster）", "实际 %d" % gd.enemies.size())
 	# ID 检查
 	for id in ["dagger", "orbit", "lightning", "aura"]:
 		_assert(gd.weapons.has(id), "武器包含 %s" % id, "缺失 %s" % id)
@@ -839,7 +840,7 @@ func _test_data_driven() -> void:
 		_assert(w.has("levels") and (w["levels"] as Array).size() == 8, "武器 %s 等级 8" % id, "实际 %d" % ((w["levels"] as Array).size() if w.has("levels") else -1))
 	for id in ["damage", "haste", "speed", "hp", "magnet"]:
 		_assert(gd.passives.has(id), "被动包含 %s" % id, "缺失 %s" % id)
-	for id in ["slime", "bat", "brute", "elite", "boss"]:
+	for id in ["slime", "bat", "brute", "charger", "caster", "elite", "boss"]:
 		_assert(gd.enemies.has(id), "敌人包含 %s" % id, "缺失 %s" % id)
 	# 生成曲线校验
 	_assert(gd.spawn.has("arena"), "spawn 包含 arena", "缺失")
@@ -858,6 +859,160 @@ func _test_data_driven() -> void:
 	print("  GameData 已加载：weapons=%d passives=%d enemies=%d spawn_keys=%s" % [gd.weapons.size(), gd.passives.size(), gd.enemies.size(), str(gd.spawn.keys())])
 	if not warns.is_empty():
 		print("  [WARN] %s" % str(warns))
+
+
+func _test_enemy_behaviors_and_director() -> void:
+	print("\n[SMOKE] 敌人行为与波次导演")
+	var gd: GDScript = preload("res://scripts/game_data.gd")
+	gd.ensure_loaded()
+	# 1. 数据驱动：charger/caster 行为与 waves 存在
+	_assert(gd.enemies.has("charger"), "敌人包含 charger", "缺失 charger")
+	_assert(gd.enemies.has("caster"), "敌人包含 caster", "缺失 caster")
+	var charger: Dictionary = gd.enemies["charger"] as Dictionary
+	var caster: Dictionary = gd.enemies["caster"] as Dictionary
+	_assert(str(charger.get("behavior", "")) == "charger", "charger behavior=charger", "实际 %s" % str(charger.get("behavior", "")))
+	_assert(str(caster.get("behavior", "")) == "caster", "caster behavior=caster", "实际 %s" % str(caster.get("behavior", "")))
+	_assert(charger.has("windup") and float(charger["windup"]) >= 0.5, "charger windup 存在且合理", "windup=%s" % str(charger.get("windup", "")))
+	_assert(caster.has("warning_time") and float(caster["warning_time"]) >= 0.5, "caster warning 存在", "warning=%s" % str(caster.get("warning_time", "")))
+	_assert(caster.has("cast_radius"), "caster cast_radius 存在", "缺失")
+	# waves 数据
+	_assert(gd.spawn.has("waves"), "spawn 包含 waves", "缺失 waves")
+	var waves: Array = gd.spawn["waves"] as Array
+	_assert(waves.size() >= 6, "waves 至少 6 段", "实际 %d" % waves.size())
+	# 检查 waves 覆盖 5 分钟节奏且包含事件
+	var has_event: bool = false
+	for w in waves:
+		if w is Dictionary and (w as Dictionary).has("event"):
+			has_event = true
+			break
+	_assert(has_event, "waves 包含事件波", "无 event")
+	# 检查 boss 阶段
+	var boss: Dictionary = gd.enemies["boss"] as Dictionary
+	_assert(boss.has("phases") and (boss["phases"] as Array).size() >= 1, "boss 包含阶段配置", "缺失 phases")
+	if boss.has("phases"):
+		var ph: Dictionary = (boss["phases"] as Array)[0] as Dictionary
+		_assert(ph.has("hp_pct") and is_equal_approx(float(ph["hp_pct"]), 0.5), "boss 一阶段 hp_pct 0.5", "实际 %s" % str(ph.get("hp_pct", "")))
+		_assert(ph.has("shock_cd") and float(ph["shock_cd"]) >= 2.0, "boss shock_cd 合理", "实际 %s" % str(ph.get("shock_cd", "")))
+		_assert(ph.has("shock_radius"), "boss shock_radius 存在", "缺失")
+	# 2. 实例化验证：不同行为敌人实例可创建且状态机就绪
+	var ps: PackedScene = load("res://scenes/game.tscn") as PackedScene
+	var g: Node = ps.instantiate()
+	root.add_child(g)
+	await process_frame
+	await process_frame
+	(g.get("player") as Node).position = Vector2.ZERO
+	# 清理
+	for e in (g.get("enemies_node") as Node).get_children():
+		e.queue_free()
+	await process_frame
+	# 生成 charger 与 caster 各一
+	g._spawn_at("charger", Vector2(120, 0))
+	g._spawn_at("caster", Vector2(-120, 0))
+	g._spawn_at("boss", Vector2(0, 180))
+	await process_frame
+	var ens: Array = g.get_tree().get_nodes_in_group("enemies")
+	var found_charger: Node = null
+	var found_caster: Node = null
+	var found_boss: Node = null
+	for e in ens:
+		var k: String = str(e.get("kind"))
+		if k == "charger":
+			found_charger = e
+		elif k == "caster":
+			found_caster = e
+		elif k == "boss":
+			found_boss = e
+	_assert(found_charger != null, "charger 实例可生成", "未找到")
+	_assert(found_caster != null, "caster 实例可生成", "未找到")
+	_assert(found_boss != null, "boss 实例可生成", "未找到")
+	if found_charger:
+		_assert(str(found_charger.get("behavior")) == "charger", "charger behavior 字段正确", "实际 %s" % str(found_charger.get("behavior")))
+		_assert(found_charger.get("charge_state") == "chase", "charger 初始 chase", "实际 %s" % str(found_charger.get("charge_state")))
+	if found_caster:
+		_assert(str(found_caster.get("behavior")) == "caster", "caster behavior 正确", "实际")
+		_assert(bool(found_caster.get("is_casting")) == false, "caster 初始非施法", "异常")
+	if found_boss:
+		_assert(int(found_boss.get("boss_phase")) == 1, "boss 初始一阶段", "实际 %d" % int(found_boss.get("boss_phase")))
+		_assert(bool(found_boss.get("boss_has_transformed")) == false, "boss 未变身", "异常")
+	# 3. 预警与伤害安全：caster 预警期间不立即伤人，预警结束后才生效
+	if found_caster:
+		var pl: Node = g.get("player") as Node
+		var hp_before: float = float(pl.get("hp"))
+		# 强制进入施法
+		found_caster.set("cast_cd", -1.0)
+		found_caster.set("is_casting", false)
+		# 距离设置为可施法范围
+		found_caster.position = Vector2(200, 0)
+		pl.position = Vector2.ZERO
+		# 模拟一帧触发施法
+		found_caster._process(0.02)
+		_assert(bool(found_caster.get("is_casting")) == true, "caster 触发施法进入预警", "未进入")
+		var warn_pos: Vector2 = found_caster.get("cast_pos") as Vector2
+		_assert(warn_pos.distance_to(pl.global_position) < 1.0, "caster 预警位置为玩家位置", "warn %s pl %s" % [str(warn_pos), str(pl.global_position)])
+		# 预警期间（0.5s 内）不应伤人
+		found_caster._process(0.4)
+		var hp_mid: float = float(pl.get("hp"))
+		_assert(is_equal_approx(hp_before, hp_mid), "预警期间玩家不应受击", "hp %.1f->%.1f" % [hp_before, hp_mid])
+		# 结束预警
+		found_caster._process(0.6)
+		var hp_after: float = float(pl.get("hp"))
+		_assert(hp_after < hp_mid - 0.1, "预警结束在圈内应受击", "hp %.1f->%.1f" % [hp_mid, hp_after])
+		# 重置玩家血量，避免影响后续
+		pl.set("hp", hp_before)
+	# 4. 冲锋预警：charger 触发 windup 时有清晰预警
+	if found_charger:
+		found_charger.set("charge_cd", -1.0)
+		found_charger.set("charge_state", "chase")
+		found_charger.position = Vector2(150, 0)
+		g.get("player").position = Vector2.ZERO
+		found_charger._process(0.02)
+		_assert(str(found_charger.get("charge_state")) == "windup", "charger 进入 windup 预警", "实际 %s" % str(found_charger.get("charge_state")))
+		var wind: float = float(found_charger.get("windup_t"))
+		_assert(wind > 0.4, "windup 时间充足便于躲避", "wind=%.2f" % wind)
+		# windup 期间不应瞬移
+		var pos_before: Vector2 = found_charger.position
+		found_charger._process(0.2)
+		var pos_mid: Vector2 = found_charger.position
+		_assert(pos_before.distance_to(pos_mid) < 20.0, "windup 期间基本静止", "移动 %.1f" % pos_before.distance_to(pos_mid))
+	# 5. Boss 二阶段：血量降至 50% 以下触发变身
+	if found_boss:
+		var st_boss: Dictionary = gd.enemies["boss"] as Dictionary
+		var max_hp_b: float = float(found_boss.get("max_hp"))
+		# 造成伤害至 40%
+		found_boss.set("hp", max_hp_b * 0.4)
+		var spd_before: float = float(found_boss.get("speed"))
+		found_boss._process(0.02)
+		_assert(int(found_boss.get("boss_phase")) == 2, "boss 达 50% 进入二阶段", "phase=%d" % int(found_boss.get("boss_phase")))
+		_assert(bool(found_boss.get("boss_has_transformed")) == true, "boss 已标记变身", "未标记")
+		var spd_after: float = float(found_boss.get("speed"))
+		_assert(spd_after > spd_before * 1.2, "二阶段速度提升", "before %.1f after %.1f" % [spd_before, spd_after])
+	# 6. 波次权重数据驱动：_pick_kind 随时间变化
+	g.set("elapsed", 10.0)
+	seed(999)
+	var picks_early: Dictionary = {}
+	for i in 50:
+		var k: String = g._pick_kind()
+		picks_early[k] = int(picks_early.get(k, 0)) + 1
+	g.set("elapsed", 200.0)
+	seed(999)
+	var picks_late: Dictionary = {}
+	for i in 50:
+		var k2: String = g._pick_kind()
+		picks_late[k2] = int(picks_late.get(k2, 0)) + 1
+	_assert(picks_early.has("charger") == false or int(picks_early.get("charger", 0)) < 10, "早期 charger 少量或无", "early %s" % str(picks_early))
+	_assert(picks_late.has("charger"), "后期应出现 charger", "late %s" % str(picks_late))
+	_assert(picks_late.has("caster"), "后期应出现 caster", "late %s" % str(picks_late))
+	# 7. 屏外无预警必中：屏外 charger 不应无预警冲锋，屏外 caster 预警仍在玩家可见区
+	# 验证 charger 在远距 (>500) 且屏外时不进入 windup
+	if found_charger:
+		found_charger.set("charge_state", "chase")
+		found_charger.set("charge_cd", -1.0)
+		found_charger.position = g.get("player").position + Vector2(900, 0) # 屏外
+		found_charger._process(0.02)
+		_assert(str(found_charger.get("charge_state")) == "chase", "屏外远距 charger 不直接 windup", "state %s" % str(found_charger.get("charge_state")))
+	g.queue_free()
+	await process_frame
+	await process_frame
 
 
 func _test_lightning_range() -> void:

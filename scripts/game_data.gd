@@ -169,7 +169,7 @@ static func _parse_enemies(raw: Variant) -> Dictionary:
 		var ed: Dictionary = v as Dictionary
 		var color_raw: Variant = ed.get("color", {})
 		var color: Color = _to_color(color_raw, "enemies[%s].color" % str(id))
-		out[id] = {
+		var entry: Dictionary = {
 			"hp": float(ed.get("hp", 10.0)),
 			"spd": float(ed.get("spd", 50.0)),
 			"dmg": float(ed.get("dmg", 5.0)),
@@ -177,6 +177,21 @@ static func _parse_enemies(raw: Variant) -> Dictionary:
 			"xp": int(ed.get("xp", 1)),
 			"color": color,
 		}
+		# 保留扩展行为字段（数据驱动），不校验具体类型以保持前向兼容
+		for ek in ed.keys():
+			if ek in ["hp", "spd", "dmg", "r", "xp", "color"]:
+				continue
+			entry[ek] = ed[ek]
+		# 嵌套 phases 颜色需转换为 Color
+		if entry.has("phases") and entry["phases"] is Array:
+			var phases: Array = entry["phases"] as Array
+			for pi in phases.size():
+				var ph: Variant = phases[pi]
+				if ph is Dictionary:
+					var pd: Dictionary = ph as Dictionary
+					if pd.has("color"):
+						pd["color"] = _to_color(pd["color"], "enemies[%s].phases[%d].color" % [str(id), pi])
+		out[id] = entry
 	if out.is_empty():
 		_warnings.append("enemies 为空，回退默认值")
 		return _default_enemies()
@@ -281,6 +296,35 @@ static func _validate() -> void:
 				var d: Dictionary = entry as Dictionary
 				if not d.has("elapsed_lt") or not d.has("weights"):
 					_errors.append("spawn.kind_thresholds 元素缺少 elapsed_lt/weights")
+	if spawn.has("waves"):
+		var wv: Variant = spawn["waves"]
+		if not wv is Array:
+			_errors.append("spawn.waves 非 Array")
+		else:
+			for wi in (wv as Array).size():
+				var w: Variant = (wv as Array)[wi]
+				if not w is Dictionary:
+					_errors.append("spawn.waves[%d] 非 Dictionary" % wi)
+					continue
+				var wd: Dictionary = w as Dictionary
+				if not wd.has("t") or not wd.has("weights"):
+					_errors.append("spawn.waves[%d] 缺少 t/weights" % wi)
+				if wd.has("weights") and not wd["weights"] is Dictionary:
+					_errors.append("spawn.waves[%d].weights 非 Dictionary" % wi)
+	# boss 阶段校验（enemies[boss].phases）
+	if enemies.has("boss") and (enemies["boss"] as Dictionary).has("phases"):
+		var phs: Variant = (enemies["boss"] as Dictionary)["phases"]
+		if not phs is Array:
+			_errors.append("enemies[boss].phases 非 Array")
+		else:
+			for pi in (phs as Array).size():
+				var pp: Variant = (phs as Array)[pi]
+				if not pp is Dictionary:
+					_errors.append("enemies[boss].phases[%d] 非 Dictionary" % pi)
+					continue
+				var pd2: Dictionary = pp as Dictionary
+				if not pd2.has("hp_pct"):
+					_errors.append("enemies[boss].phases[%d] 缺少 hp_pct" % pi)
 
 
 # ---------- 内置默认值（与原 hardcode 完全一致，保证回退行为不变） ----------
@@ -357,11 +401,13 @@ static func _default_passives() -> Dictionary:
 
 static func _default_enemies() -> Dictionary:
 	return {
-		"slime": {"hp": 18.0, "spd": 72.0, "dmg": 8.0, "r": 13.0, "xp": 1, "color": Color(0.4, 0.85, 0.45)},
-		"bat": {"hp": 11.0, "spd": 135.0, "dmg": 6.0, "r": 10.0, "xp": 1, "color": Color(0.8, 0.5, 0.95)},
-		"brute": {"hp": 65.0, "spd": 48.0, "dmg": 16.0, "r": 19.0, "xp": 3, "color": Color(0.95, 0.55, 0.3)},
-		"elite": {"hp": 420.0, "spd": 62.0, "dmg": 22.0, "r": 27.0, "xp": 0, "color": Color(1.0, 0.85, 0.3)},
-		"boss": {"hp": 3200.0, "spd": 44.0, "dmg": 32.0, "r": 46.0, "xp": 0, "color": Color(0.9, 0.25, 0.3)},
+		"slime": {"hp": 18.0, "spd": 72.0, "dmg": 8.0, "r": 13.0, "xp": 1, "color": Color(0.4, 0.85, 0.45), "behavior": "chase"},
+		"bat": {"hp": 11.0, "spd": 135.0, "dmg": 6.0, "r": 10.0, "xp": 1, "color": Color(0.8, 0.5, 0.95), "behavior": "chase"},
+		"brute": {"hp": 65.0, "spd": 48.0, "dmg": 16.0, "r": 19.0, "xp": 3, "color": Color(0.95, 0.55, 0.3), "behavior": "chase"},
+		"charger": {"hp": 28.0, "spd": 68.0, "dmg": 14.0, "r": 14.0, "xp": 2, "color": Color(0.98, 0.62, 0.18), "behavior": "charger", "windup": 0.75, "dash_speed": 380.0, "dash_time": 0.45, "charge_cd": 2.2, "charge_range": 280.0, "charge_dmg_mult": 1.6},
+		"caster": {"hp": 22.0, "spd": 75.0, "dmg": 12.0, "r": 12.0, "xp": 2, "color": Color(0.65, 0.45, 0.98), "behavior": "caster", "cast_cd": 3.0, "warning_time": 0.9, "cast_radius": 75.0, "cast_range_min": 120.0, "cast_range_max": 420.0},
+		"elite": {"hp": 420.0, "spd": 62.0, "dmg": 22.0, "r": 27.0, "xp": 0, "color": Color(1.0, 0.85, 0.3), "behavior": "chase"},
+		"boss": {"hp": 3200.0, "spd": 44.0, "dmg": 32.0, "r": 46.0, "xp": 0, "color": Color(0.9, 0.25, 0.3), "behavior": "boss", "phases": [{"hp_pct": 0.5, "spd_mult": 1.35, "color": Color(0.98, 0.3, 0.32), "shock_cd": 4.0, "shock_radius": 120.0, "shock_dmg": 20.0, "shock_warning": 0.85, "summon_interval": 5.5, "summon_count": 2}]},
 	}
 
 
@@ -378,8 +424,20 @@ static func _default_spawn() -> Dictionary:
 		"kind_thresholds": [
 			{"elapsed_lt": 25.0, "weights": {"slime": 1.0}},
 			{"elapsed_lt": 60.0, "weights": {"slime": 0.75, "bat": 0.25}},
-			{"elapsed_lt": 120.0, "weights": {"slime": 0.5, "bat": 0.3, "brute": 0.2}},
-			{"elapsed_lt": 9999.0, "weights": {"slime": 0.4, "bat": 0.3, "brute": 0.3}},
+			{"elapsed_lt": 95.0, "weights": {"slime": 0.5, "bat": 0.3, "brute": 0.2}},
+			{"elapsed_lt": 135.0, "weights": {"slime": 0.4, "bat": 0.25, "brute": 0.15, "charger": 0.2}},
+			{"elapsed_lt": 180.0, "weights": {"slime": 0.3, "bat": 0.2, "brute": 0.15, "charger": 0.175, "caster": 0.175}},
+			{"elapsed_lt": 9999.0, "weights": {"slime": 0.22, "bat": 0.18, "brute": 0.18, "charger": 0.21, "caster": 0.21}},
+		],
+		"waves": [
+			{"t": 0.0, "label": "opening", "weights": {"slime": 1.0}},
+			{"t": 30.0, "label": "bat_swarm", "weights": {"slime": 0.7, "bat": 0.3}},
+			{"t": 70.0, "label": "brute_pressure", "weights": {"slime": 0.5, "bat": 0.3, "brute": 0.2}},
+			{"t": 95.0, "label": "charger_intro", "weights": {"slime": 0.4, "bat": 0.25, "brute": 0.15, "charger": 0.2}, "event": "charger_wave", "count": 6},
+			{"t": 130.0, "label": "caster_intro", "weights": {"slime": 0.35, "bat": 0.2, "brute": 0.15, "charger": 0.15, "caster": 0.15}, "event": "caster_ring", "count": 1},
+			{"t": 175.0, "label": "mixed", "weights": {"slime": 0.28, "bat": 0.18, "brute": 0.18, "charger": 0.18, "caster": 0.18}},
+			{"t": 215.0, "label": "brute_charger_caster", "weights": {"bat": 0.18, "brute": 0.22, "charger": 0.3, "caster": 0.3}, "event": "mix_wave", "count": 8},
+			{"t": 255.0, "label": "finale", "weights": {"brute": 0.28, "charger": 0.26, "caster": 0.26, "bat": 0.2}, "event": "finale", "count": 10},
 		],
 		"enemy_scaling": {"hp_per_sec": 0.011, "speed_per_sec": 0.0005, "speed_max": 1.2, "speed_rand_min": 0.92, "speed_rand_max": 1.08, "dmg_per_sec": 0.0022},
 		"player": {"base_speed": 235.0, "base_magnet": 95.0, "base_hp": 100.0},

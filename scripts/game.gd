@@ -56,6 +56,8 @@ var spawn_t := 1.0
 var elite_t := 45.0
 var boss_idx := 0
 var shake := 0.0
+var _wave_idx := 0
+var _wave_cache: Array = []
 
 # --- 性能优化：对象池与注册表 ---
 var _proj_pool: Array = []
@@ -75,6 +77,16 @@ func _ready() -> void:
 		push_warning("[GameData] %s" % str(w))
 	if GameData.spawn.has("elite_interval"):
 		elite_t = float(GameData.spawn["elite_interval"])
+	# 波次导演初始化：缓存并排序 waves
+	var wraw: Variant = GameData.spawn.get("waves", [])
+	if wraw is Array:
+		_wave_cache = (wraw as Array).duplicate()
+		# 按 t 排序
+		_wave_cache.sort_custom(func(a, b): return float((a as Dictionary).get("t", 0.0)) < float((b as Dictionary).get("t", 0.0)))
+	_wave_idx = 0
+	# 跳过已过时的波次（若 elapsed 非0启动）
+	while _wave_idx < _wave_cache.size() and elapsed >= float((_wave_cache[_wave_idx] as Dictionary).get("t", 0.0)):
+		_wave_idx += 1
 	sfx = SfxScript.new()
 	add_child(sfx)
 	world = Node2D.new()
@@ -166,7 +178,67 @@ func _process(delta: float) -> void:
 		cam.offset = Vector2.ZERO
 
 
+func _get_wave_weights() -> Dictionary:
+	if _wave_cache.is_empty():
+		return {}
+	var best: Dictionary = {}
+	var best_t: float = -1.0
+	for w in _wave_cache:
+		if not w is Dictionary:
+			continue
+		var wd: Dictionary = w as Dictionary
+		var tt: float = float(wd.get("t", 0.0))
+		if tt <= elapsed and tt >= best_t:
+			best_t = tt
+			best = wd.get("weights", {}) as Dictionary
+	return best
+
+
+func _trigger_wave_event(wd: Dictionary) -> void:
+	var ev: String = str(wd.get("event", ""))
+	if ev == "":
+		return
+	var cnt: int = int(wd.get("count", 6))
+	# 避免在 capped 时刷爆，尊重上限
+	match ev:
+		"charger_wave":
+			for i in cnt:
+				if _live_count() >= MAX_ENEMIES:
+					break
+				_spawn_at("charger", _spawn_pos())
+		"caster_ring":
+			# 在玩家周围环形生成 caster 预警展示
+			for i in cnt:
+				if _live_count() >= MAX_ENEMIES:
+					break
+				_spawn_at("caster", _spawn_pos())
+		"mix_wave":
+			for i in cnt:
+				if _live_count() >= MAX_ENEMIES:
+					break
+				var k: String = "charger" if i % 2 == 0 else "caster"
+				if i % 4 == 0:
+					k = "brute"
+				_spawn_at(k, _spawn_pos())
+		"finale":
+			for i in cnt:
+				if _live_count() >= MAX_ENEMIES:
+					break
+				var kk: String = ["charger", "caster", "brute", "bat"][i % 4]
+				_spawn_at(kk, _spawn_pos())
+		_:
+			for i in cnt:
+				if _live_count() >= MAX_ENEMIES:
+					break
+				_spawn_at(_pick_kind(), _spawn_pos())
+
+
 func _update_spawner(delta: float) -> void:
+	# 波次导演：检查是否进入新 wave 并触发事件
+	while _wave_idx < _wave_cache.size() and elapsed >= float((_wave_cache[_wave_idx] as Dictionary).get("t", 0.0)):
+		var wd: Dictionary = _wave_cache[_wave_idx] as Dictionary
+		_trigger_wave_event(wd)
+		_wave_idx += 1
 	spawn_t -= delta
 	if spawn_t <= 0.0:
 		var si: Dictionary = GameData.spawn.get("spawn_interval", {}) as Dictionary
@@ -214,7 +286,17 @@ func _spawn_pos() -> Vector2:
 
 
 func _pick_kind() -> String:
-	# 数据驱动：读取 spawn.kind_thresholds，按 elapsed 匹配首个阈值后按权重随机
+	# 波次导演优先：若 waves 存在则取最新 wave 的 weights
+	var wave_weights: Dictionary = _get_wave_weights()
+	if not wave_weights.is_empty():
+		var roll_w: float = randf()
+		var acc_w: float = 0.0
+		for k in wave_weights.keys():
+			acc_w += float(wave_weights[k])
+			if roll_w < acc_w:
+				return str(k)
+		return str(wave_weights.keys()[0]) if not wave_weights.is_empty() else "slime"
+	# 兼容旧：读取 spawn.kind_thresholds，按 elapsed 匹配首个阈值后按权重随机
 	var thresholds: Array = GameData.spawn.get("kind_thresholds", []) as Array
 	if thresholds.is_empty():
 		# 回退硬编码（保证无数据时行为不变）

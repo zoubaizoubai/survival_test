@@ -284,7 +284,8 @@
         "r": 0.4,
         "g": 0.85,
         "b": 0.45
-      }
+      },
+      "behavior": "chase"
     },
     "bat": {
       "hp": 11.0,
@@ -296,7 +297,8 @@
         "r": 0.8,
         "g": 0.5,
         "b": 0.95
-      }
+      },
+      "behavior": "chase"
     },
     "brute": {
       "hp": 65.0,
@@ -308,7 +310,45 @@
         "r": 0.95,
         "g": 0.55,
         "b": 0.3
-      }
+      },
+      "behavior": "chase"
+    },
+    "charger": {
+      "hp": 28.0,
+      "spd": 68.0,
+      "dmg": 14.0,
+      "r": 14.0,
+      "xp": 2,
+      "color": {
+        "r": 0.98,
+        "g": 0.62,
+        "b": 0.18
+      },
+      "behavior": "charger",
+      "windup": 0.75,
+      "dash_speed": 380.0,
+      "dash_time": 0.45,
+      "charge_cd": 2.2,
+      "charge_range": 280.0,
+      "charge_dmg_mult": 1.6
+    },
+    "caster": {
+      "hp": 22.0,
+      "spd": 75.0,
+      "dmg": 12.0,
+      "r": 12.0,
+      "xp": 2,
+      "color": {
+        "r": 0.65,
+        "g": 0.45,
+        "b": 0.98
+      },
+      "behavior": "caster",
+      "cast_cd": 3.0,
+      "warning_time": 0.9,
+      "cast_radius": 75.0,
+      "cast_range_min": 120.0,
+      "cast_range_max": 420.0
     },
     "elite": {
       "hp": 420.0,
@@ -320,7 +360,8 @@
         "r": 1.0,
         "g": 0.85,
         "b": 0.3
-      }
+      },
+      "behavior": "chase"
     },
     "boss": {
       "hp": 3200.0,
@@ -332,7 +373,25 @@
         "r": 0.9,
         "g": 0.25,
         "b": 0.3
-      }
+      },
+      "behavior": "boss",
+      "phases": [
+        {
+          "hp_pct": 0.5,
+          "spd_mult": 1.35,
+          "color": {
+            "r": 0.98,
+            "g": 0.3,
+            "b": 0.32
+          },
+          "shock_cd": 4.0,
+          "shock_radius": 120.0,
+          "shock_dmg": 20.0,
+          "shock_warning": 0.85,
+          "summon_interval": 5.5,
+          "summon_count": 2
+        }
+      ]
     }
   },
   "spawn": {
@@ -370,7 +429,7 @@
         }
       },
       {
-        "elapsed_lt": 120.0,
+        "elapsed_lt": 95.0,
         "weights": {
           "slime": 0.5,
           "bat": 0.3,
@@ -378,12 +437,119 @@
         }
       },
       {
-        "elapsed_lt": 9999.0,
+        "elapsed_lt": 135.0,
         "weights": {
           "slime": 0.4,
-          "bat": 0.3,
-          "brute": 0.3
+          "bat": 0.25,
+          "brute": 0.15,
+          "charger": 0.2
         }
+      },
+      {
+        "elapsed_lt": 180.0,
+        "weights": {
+          "slime": 0.3,
+          "bat": 0.2,
+          "brute": 0.15,
+          "charger": 0.175,
+          "caster": 0.175
+        }
+      },
+      {
+        "elapsed_lt": 9999.0,
+        "weights": {
+          "slime": 0.22,
+          "bat": 0.18,
+          "brute": 0.18,
+          "charger": 0.21,
+          "caster": 0.21
+        }
+      }
+    ],
+    "waves": [
+      {
+        "t": 0.0,
+        "label": "opening",
+        "weights": {
+          "slime": 1.0
+        }
+      },
+      {
+        "t": 30.0,
+        "label": "bat_swarm",
+        "weights": {
+          "slime": 0.7,
+          "bat": 0.3
+        }
+      },
+      {
+        "t": 70.0,
+        "label": "brute_pressure",
+        "weights": {
+          "slime": 0.5,
+          "bat": 0.3,
+          "brute": 0.2
+        }
+      },
+      {
+        "t": 95.0,
+        "label": "charger_intro",
+        "weights": {
+          "slime": 0.4,
+          "bat": 0.25,
+          "brute": 0.15,
+          "charger": 0.2
+        },
+        "event": "charger_wave",
+        "count": 6
+      },
+      {
+        "t": 130.0,
+        "label": "caster_intro",
+        "weights": {
+          "slime": 0.35,
+          "bat": 0.2,
+          "brute": 0.15,
+          "charger": 0.15,
+          "caster": 0.15
+        },
+        "event": "caster_ring",
+        "count": 1
+      },
+      {
+        "t": 175.0,
+        "label": "mixed",
+        "weights": {
+          "slime": 0.28,
+          "bat": 0.18,
+          "brute": 0.18,
+          "charger": 0.18,
+          "caster": 0.18
+        }
+      },
+      {
+        "t": 215.0,
+        "label": "brute_charger_caster",
+        "weights": {
+          "bat": 0.18,
+          "brute": 0.22,
+          "charger": 0.3,
+          "caster": 0.3
+        },
+        "event": "mix_wave",
+        "count": 8
+      },
+      {
+        "t": 255.0,
+        "label": "finale",
+        "weights": {
+          "brute": 0.28,
+          "charger": 0.26,
+          "caster": 0.26,
+          "bat": 0.2
+        },
+        "event": "finale",
+        "count": 10
       }
     ],
     "enemy_scaling": {
@@ -401,8 +567,8 @@
     }
   },
   "_meta": {
-    "version": "1.0",
-    "description": "幸存者数值表 - 集中管理武器/被动/敌人/生成曲线，启动时校验",
+    "version": "1.1",
+    "description": "幸存者数值表 - 集中管理武器/被动/敌人/生成曲线，启动时校验；1.1新增 charger/caster 与波次导演及 Boss 阶段",
     "updated": "2026-08-22"
   }
 }
