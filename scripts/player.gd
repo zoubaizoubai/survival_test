@@ -223,7 +223,7 @@ func _area_damage(pos: Vector2, r: float, dmg: float) -> void:
 	for e in get_tree().get_nodes_in_group("enemies"):
 		if e.dead:
 			continue
-		if global_position.distance_to(e.global_position) < r + e.radius:
+		if pos.distance_to(e.global_position) < r + e.radius:
 			game.hurt_enemy(e, dmg, (e.global_position - pos).normalized() * 80.0)
 
 

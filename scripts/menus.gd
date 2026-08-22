@@ -137,6 +137,10 @@ func _make_button(text_value: String, accent: bool = false) -> Button:
 
 
 func show_upgrades(cards: Array) -> void:
+	if pause_layer.visible:
+		pause_layer.visible = false
+	if end_layer.visible:
+		end_layer.visible = false
 	for child in cards_box.get_children():
 		child.queue_free()
 	for i in cards.size():
@@ -149,7 +153,7 @@ func hide_upgrades() -> void:
 
 
 func toggle_pause() -> void:
-	if game.ended or upgrade_layer.visible:
+	if game.ended or upgrade_layer.visible or end_layer.visible:
 		return
 	if pause_layer.visible:
 		pause_layer.visible = false
@@ -160,6 +164,10 @@ func toggle_pause() -> void:
 
 
 func show_end(win: bool, time_sec: float, kills: int, level: int) -> void:
+	if upgrade_layer.visible:
+		upgrade_layer.visible = false
+	if pause_layer.visible:
+		pause_layer.visible = false
 	if win:
 		end_title.text = "胜 利 ！"
 		end_title.add_theme_color_override("font_color", Color(1.0, 0.85, 0.3))

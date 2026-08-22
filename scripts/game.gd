@@ -305,15 +305,21 @@ func _spawn_pickup(kind: String, pos: Vector2, value: int) -> void:
 
 
 func _on_level_up() -> void:
+	if ended:
+		return
 	pending_levels += 1
 	if not menus.upgrade_layer.visible:
 		_show_next_upgrade()
 
 
 func _show_next_upgrade() -> void:
+	if ended or menus.end_layer.visible:
+		return
 	if pending_levels <= 0:
 		return
 	pending_levels -= 1
+	if menus.pause_layer.visible:
+		menus.pause_layer.visible = false
 	get_tree().paused = true
 	menus.show_upgrades(_roll_cards())
 
@@ -373,6 +379,11 @@ func _win() -> void:
 	if ended:
 		return
 	ended = true
+	pending_levels = 0
+	if menus.upgrade_layer.visible:
+		menus.hide_upgrades()
+	if menus.pause_layer.visible:
+		menus.pause_layer.visible = false
 	get_tree().paused = true
 	menus.show_end(true, elapsed, kills, player.level)
 
@@ -381,24 +392,49 @@ func _lose() -> void:
 	if ended:
 		return
 	ended = true
+	pending_levels = 0
+	if menus.upgrade_layer.visible:
+		menus.hide_upgrades()
+	if menus.pause_layer.visible:
+		menus.pause_layer.visible = false
+	get_tree().paused = true
 	shake = 12.0
 	spawn_burst(player.position, Color(0.4, 0.85, 1.0), 60)
-	get_tree().paused = true
 	menus.show_end(false, elapsed, kills, player.level)
 
 
 func continue_endless() -> void:
 	endless = true
 	ended = false
+	if menus.upgrade_layer.visible:
+		menus.hide_upgrades()
+	if menus.pause_layer.visible:
+		menus.pause_layer.visible = false
 	get_tree().paused = false
 	menus.hide_end()
 
 
 func restart() -> void:
+	if menus:
+		if menus.upgrade_layer.visible:
+			menus.hide_upgrades()
+		if menus.pause_layer.visible:
+			menus.pause_layer.visible = false
+		if menus.end_layer.visible:
+			menus.hide_end()
+	pending_levels = 0
 	get_tree().paused = false
 	get_tree().reload_current_scene()
 
 
 func to_home() -> void:
+	if menus:
+		if menus.upgrade_layer.visible:
+			menus.hide_upgrades()
+		if menus.pause_layer.visible:
+			menus.pause_layer.visible = false
+		if menus.end_layer.visible:
+			menus.hide_end()
+	pending_levels = 0
 	get_tree().paused = false
 	get_tree().change_scene_to_file("res://scenes/home.tscn")

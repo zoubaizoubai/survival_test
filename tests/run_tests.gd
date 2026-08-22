@@ -100,6 +100,8 @@ func _run_all() -> void:
 	await _test_seed_determinism()
 	await _test_perf_scenarios()
 	await _test_spawn_clamp_and_caps()
+	await _test_lightning_range()
+	await _test_state_mutex_and_recovery()
 	# 确保所有异步清理完成
 	await process_frame
 	await process_frame
@@ -673,6 +675,190 @@ func _run_perf_caps() -> Dictionary:
 	await process_frame
 	await process_frame
 	return result
+
+
+func _test_lightning_range() -> void:
+	print("\n[SMOKE] 雷霆范围回归")
+	var ps: PackedScene = load("res://scenes/game.tscn") as PackedScene
+	var g: Node = ps.instantiate()
+	root.add_child(g)
+	await process_frame
+	await process_frame
+	# 确保有雷霆武器
+	if not (g.get("player") as Node).get("weapons").has("lightning"):
+		(g.get("player") as Node).add_weapon("lightning")
+	# 清理场上敌人
+	for e in (g.get("enemies_node") as Node).get_children():
+		e.queue_free()
+	await process_frame
+	# 玩家固定在原点
+	(g.get("player") as Node).position = Vector2.ZERO
+	# 落雷点远离玩家，敌人A在落雷点附近，敌人B在玩家附近但远离落雷点
+	var lightning_pos: Vector2 = Vector2(500, 0)
+	var posA: Vector2 = lightning_pos + Vector2(10, 0) # 距落雷 10
+	var posB: Vector2 = Vector2.ZERO + Vector2(10, 0) # 距玩家 10，距落雷 ~490
+	g._spawn_at("slime", posA)
+	g._spawn_at("slime", posB)
+	await process_frame
+	var enemies: Array = g.get_tree().get_nodes_in_group("enemies")
+	_assert(enemies.size() == 2, "雷霆测试生成 2 敌人", "数量=%d" % enemies.size())
+	if enemies.size() != 2:
+		g.queue_free()
+		await process_frame
+		return
+	# 按位置区分 A/B
+	var eA: Node = null
+	var eB: Node = null
+	for e in enemies:
+		if (e as Node2D).position.distance_to(posA) < 1.0:
+			eA = e
+		elif (e as Node2D).position.distance_to(posB) < 1.0:
+			eB = e
+	_assert(eA != null and eB != null, "可定位两敌人", "eA=%s eB=%s" % [str(eA), str(eB)])
+	if eA == null or eB == null:
+		g.queue_free()
+		await process_frame
+		return
+	var hpA_before: float = float(eA.get("hp"))
+	var hpB_before: float = float(eB.get("hp"))
+	var aoe: float = 70.0
+	var dmg: float = 10.0 # 使用低伤害避免直接击杀导致实例释放
+	# 调用修复后的范围伤害：应仅伤害落雷点附近
+	(g.get("player") as Node)._area_damage(lightning_pos, aoe, dmg)
+	# 立即检查（queue_free 延迟到帧末，await 前实例仍有效）
+	var hpA_after: float = float(eA.get("hp")) if is_instance_valid(eA) else -1.0
+	var hpB_after: float = float(eB.get("hp")) if is_instance_valid(eB) else -1.0
+	var hitA: bool = (not is_instance_valid(eA)) or hpA_after < hpA_before - 0.1 or (eA.get("dead") if is_instance_valid(eA) else true)
+	var hitB: bool = (is_instance_valid(eB) and float(eB.get("hp")) < hpB_before - 0.1) or (is_instance_valid(eB) and bool(eB.get("dead")))
+	# 由于 dmg=10，slime 18hp 不会死亡，hit 判定以 hp 下降为准
+	hitA = hpA_after < hpA_before - 0.1
+	hitB = hpB_after < hpB_before - 0.1
+	_assert(hitA, "落雷点附近敌人应受击", "hpA %.1f->%.1f" % [hpA_before, hpA_after])
+	_assert(not hitB, "玩家附近但远离落雷点敌人不应受击", "hpB %.1f->%.1f 落雷=%s" % [hpB_before, hpB_after, str(lightning_pos)])
+	# 反向：若落雷在玩家位置，A 应不受击而 B 受击
+	# 重置血量（若实例仍有效）
+	if is_instance_valid(eA):
+		eA.set("hp", hpA_before)
+	if is_instance_valid(eB):
+		eB.set("hp", hpB_before)
+	(g.get("player") as Node)._area_damage(Vector2.ZERO, aoe, dmg)
+	var hpA2: float = float(eA.get("hp")) if is_instance_valid(eA) else -1.0
+	var hpB2: float = float(eB.get("hp")) if is_instance_valid(eB) else -1.0
+	_assert(not (hpA2 < hpA_before - 0.1), "远离落雷点敌人不应受击（二次）", "hpA %.1f->%.1f" % [hpA_before, hpA2])
+	_assert(hpB2 < hpB_before - 0.1, "玩家位置落雷应伤害附近敌人", "hpB %.1f->%.1f" % [hpB_before, hpB2])
+	g.queue_free()
+	await process_frame
+	await process_frame
+
+
+func _test_state_mutex_and_recovery() -> void:
+	print("\n[SMOKE] 关键流程互斥与恢复")
+	var ps: PackedScene = load("res://scenes/game.tscn") as PackedScene
+	var g: Node = ps.instantiate()
+	root.add_child(g)
+	await process_frame
+	await process_frame
+	var menus: Control = g.get("menus") as Control
+	# 1. 暂停时触发升级：升级应隐藏暂停并独占
+	menus.toggle_pause()
+	await process_frame
+	_assert(menus.get("pause_layer").visible == true, "互斥前置：暂停可见", "pause 隐藏")
+	g._on_level_up()
+	await process_frame
+	_assert(menus.get("upgrade_layer").visible == true, "暂停时升级应显示", "upgrade 隐藏")
+	_assert(menus.get("pause_layer").visible == false, "升级显示时暂停应自动隐藏", "pause 仍可见")
+	_assert(g.get_tree().paused == true, "升级时保持暂停", "未暂停")
+	# 清理升级
+	var cards: Array = g._roll_cards()
+	g._on_card_chosen(cards[0])
+	await process_frame
+	_assert(menus.get("upgrade_layer").visible == false, "选卡后升级隐藏", "仍可见")
+	_assert(g.get_tree().paused == false, "选卡后恢复", "仍暂停")
+	# 2. 升级时触发胜利：胜利应隐藏升级并独占
+	g._on_level_up()
+	await process_frame
+	_assert(menus.get("upgrade_layer").visible == true, "胜利前置：升级可见", "隐藏")
+	g._win()
+	await process_frame
+	_assert(menus.get("end_layer").visible == true, "胜利后结算可见", "隐藏")
+	_assert(menus.get("upgrade_layer").visible == false, "胜利时升级应隐藏", "upgrade 仍可见")
+	_assert(menus.get("pause_layer").visible == false, "胜利时暂停应隐藏", "pause 仍可见")
+	_assert(g.get("ended") == true, "胜利后 ended=true", "false")
+	_assert(int(g.get("pending_levels")) == 0, "胜利后 pending 清零", "pending=%d" % int(g.get("pending_levels")))
+	# 此时尝试再升级应被阻断
+	var pend_before: int = int(g.get("pending_levels"))
+	g._on_level_up()
+	await process_frame
+	_assert(int(g.get("pending_levels")) == pend_before, "胜利后升级被阻断", "pending 变化")
+	_assert(menus.get("upgrade_layer").visible == false, "胜利后升级不应显示", "可见")
+	# 通过 continue_endless 重置
+	g.continue_endless()
+	await process_frame
+	_assert(g.get("ended") == false, "无尽可能下 ended=false", "true")
+	_assert(menus.get("end_layer").visible == false, "无尽后结算隐藏", "可见")
+	_assert(g.get_tree().paused == false, "无尽后恢复", "暂停")
+	# 3. 失败时同样互斥
+	g._on_level_up()
+	await process_frame
+	_assert(menus.get("upgrade_layer").visible == true, "失败前置：升级可见", "隐藏")
+	(g.get("player") as Node).hurt(9999.0)
+	await process_frame
+	await process_frame
+	_assert(menus.get("end_layer").visible == true, "失败后结算可见", "隐藏")
+	_assert(menus.get("upgrade_layer").visible == false, "失败时升级应隐藏", "可见")
+	# 重置为新实例测试 restart/to_home 总会解除暂停并隐藏层
+	g.queue_free()
+	await process_frame
+	await process_frame
+	var g2: Node = ps.instantiate()
+	root.add_child(g2)
+	await process_frame
+	await process_frame
+	var m2: Control = g2.get("menus") as Control
+	# 模拟三层中任意层可见 + 暂停
+	m2.get("upgrade_layer").visible = true
+	m2.get("pause_layer").visible = true
+	m2.get("end_layer").visible = true
+	g2.get_tree().paused = true
+	g2.set("pending_levels", 2)
+	g2.restart()
+	await process_frame
+	_assert(g2.get_tree().paused == false, "restart 后总会解除暂停", "仍暂停")
+	_assert(m2.get("upgrade_layer").visible == false, "restart 后升级隐藏", "可见")
+	_assert(m2.get("pause_layer").visible == false, "restart 后暂停隐藏", "可见")
+	_assert(m2.get("end_layer").visible == false, "restart 后结算隐藏", "可见")
+	_assert(int(g2.get("pending_levels")) == 0, "restart 后 pending 清零", "pending=%d" % int(g2.get("pending_levels")))
+	g2.queue_free()
+	await process_frame
+	await process_frame
+	var g3: Node = ps.instantiate()
+	root.add_child(g3)
+	await process_frame
+	await process_frame
+	var m3: Control = g3.get("menus") as Control
+	m3.get("upgrade_layer").visible = true
+	m3.get("pause_layer").visible = true
+	m3.get("end_layer").visible = true
+	g3.get_tree().paused = true
+	g3.set("pending_levels", 1)
+	g3.to_home()
+	await process_frame
+	await process_frame
+	_assert(g3.get_tree().paused == false, "to_home 后总会解除暂停", "仍暂停")
+	# to_home 会切换场景，m3 可能随场景卸载，但仍校验 pending 与暂停
+	_assert(int(g3.get("pending_levels")) == 0, "to_home 后 pending 清零", "pending=%d" % int(g3.get("pending_levels")))
+	# 清理可能的新 Home 场景
+	if current_scene != null and current_scene.name == "Home":
+		current_scene.queue_free()
+		await process_frame
+	if is_instance_valid(g3) and g3.get_parent() == root:
+		g3.queue_free()
+		await process_frame
+	await process_frame
+	if is_instance_valid(g) and g.get_parent() == root:
+		g.queue_free()
+		await process_frame
+	await process_frame
 
 
 func _test_spawn_clamp_and_caps() -> void:
