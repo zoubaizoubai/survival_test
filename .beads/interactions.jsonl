@@ -1,0 +1,1 @@
+{"id":"int-3e9ebcda115c1c55664d4ced0ab675cd","kind":"field_change","created_at":"2026-08-22T06:04:43.708523Z","actor":"zoubai","issue_id":"survival-7n6","extra":{"field":"status","new_value":"closed","old_value":"in_progress","reason":"已完善 AGENTS.md、验证配置并创建 Git 提交 29c331f。"}}
