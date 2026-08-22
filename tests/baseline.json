@@ -1,5 +1,5 @@
 {
-	"elapsed_msec": 3652,
+	"elapsed_msec": 3909,
 	"godot_version": {
 		"build": "official",
 		"hash": "ed1daf0bf001b61586d9930840f2f1394092c079",
@@ -13,54 +13,54 @@
 	},
 	"scenarios": [
 		{
-			"avg_ms": 0.272455,
+			"avg_ms": 0.383455,
 			"elapsed": 60.0,
 			"enemies": 170,
 			"iterations": 200,
-			"object_count": 2362,
-			"object_nodes": 599,
-			"p50_ms": 0.269,
-			"p95_ms": 0.305,
+			"object_count": 2664,
+			"object_nodes": 780,
+			"p50_ms": 0.381,
+			"p95_ms": 0.434,
 			"pickups": 350,
 			"seed": 1397,
-			"total_nodes": 594
+			"total_nodes": 775
 		},
 		{
-			"avg_ms": 0.331475,
+			"avg_ms": 0.43754,
 			"elapsed": 180.0,
 			"enemies": 171,
 			"iterations": 200,
-			"object_count": 2364,
-			"object_nodes": 600,
-			"p50_ms": 0.327,
-			"p95_ms": 0.382,
+			"object_count": 2667,
+			"object_nodes": 782,
+			"p50_ms": 0.434,
+			"p95_ms": 0.483,
 			"pickups": 350,
 			"seed": 1517,
-			"total_nodes": 595
+			"total_nodes": 777
 		},
 		{
-			"avg_ms": 0.107855,
+			"avg_ms": 0.10765,
 			"elapsed": 300.0,
 			"enemies": 171,
 			"iterations": 200,
-			"object_count": 2364,
-			"object_nodes": 600,
-			"p50_ms": 0.096,
-			"p95_ms": 0.131,
+			"object_count": 2667,
+			"object_nodes": 782,
+			"p50_ms": 0.098,
+			"p95_ms": 0.132,
 			"pickups": 350,
 			"seed": 1637,
-			"total_nodes": 595
+			"total_nodes": 777
 		},
 		{
-			"avg_ms": 0.238755,
+			"avg_ms": 0.353445,
 			"elapsed": 999.0,
 			"enemies": 170,
 			"label": "caps",
-			"object_count": 2371,
-			"p95_ms": 0.259,
+			"object_count": 2676,
+			"p95_ms": 0.382,
 			"pickups": 350,
 			"seed": 11336,
-			"total_nodes": 595
+			"total_nodes": 776
 		}
 	],
 	"seed": 1337,
@@ -69,5 +69,5 @@
 		"passed": 347,
 		"total": 347
 	},
-	"timestamp": "2026-08-22 17:42:47"
+	"timestamp": "2026-08-22 18:27:14"
 }

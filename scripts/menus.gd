@@ -1,5 +1,8 @@
 extends Control
 
+const UiStyle := preload("res://scripts/ui_style.gd")
+const SpriteLibrary := preload("res://scripts/sprite_library.gd")
+
 var game: Node2D
 var upgrade_layer: Control
 var pause_layer: Control
@@ -20,7 +23,7 @@ func _ready() -> void:
 	uv.name = "UpgradeV"
 	uv.alignment = BoxContainer.ALIGNMENT_CENTER
 	uv.add_theme_constant_override("separation", 22)
-	uv.add_child(_make_label("升 级 ！选择一项强化", 26, Color(1.0, 0.9, 0.5)))
+	uv.add_child(_make_label("升级！选一项强化", 28, Color(1.0, 0.93, 0.55)))
 	# 包裹卡片的滚动容器以适配超宽/窄高
 	_cards_scroll = ScrollContainer.new()
 	_cards_scroll.name = "CardsScroll"
@@ -115,11 +118,11 @@ func _update_layout() -> void:
 		for child in cards_box.get_children():
 			if child is PanelContainer:
 				if is_short:
-					child.custom_minimum_size = Vector2(180, 150)
+					child.custom_minimum_size = Vector2(196, 200)
 				elif is_wide:
-					child.custom_minimum_size = Vector2(200, 170)
+					child.custom_minimum_size = Vector2(214, 220)
 				else:
-					child.custom_minimum_size = Vector2(210, 190)
+					child.custom_minimum_size = Vector2(228, 236)
 	# 调整字体在窄高屏下的大小
 	if end_title:
 		end_title.add_theme_font_size_override("font_size", 36 if is_short else 44)
@@ -164,7 +167,7 @@ func _make_dim_layer(content: Control) -> Control:
 	layer.visible = false
 	add_child(layer)
 	var dim := ColorRect.new()
-	dim.color = Color(0.02, 0.02, 0.04, 0.72)
+	dim.color = Color(0.05, 0.03, 0.04, 0.72)
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	dim.mouse_filter = Control.MOUSE_FILTER_STOP
 	layer.add_child(dim)
@@ -202,30 +205,9 @@ func _center(n: Control) -> CenterContainer:
 func _make_button(text_value: String, accent: bool = false) -> Button:
 	var b := Button.new()
 	b.text = text_value
-	b.custom_minimum_size = Vector2(230, 48)
+	b.custom_minimum_size = Vector2(240, 52)
 	b.focus_mode = Control.FOCUS_ALL
-	b.add_theme_font_size_override("font_size", 17)
-	b.add_theme_color_override("font_color", Color.WHITE)
-	b.add_theme_color_override("font_hover_color", Color.WHITE)
-	b.add_theme_color_override("font_pressed_color", Color(1, 1, 1, 0.85))
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.93, 0.42, 0.3) if accent else Color(1, 1, 1, 0.08)
-	sb.set_corner_radius_all(10)
-	sb.content_margin_left = 18
-	sb.content_margin_right = 18
-	sb.content_margin_top = 10
-	sb.content_margin_bottom = 10
-	if not accent:
-		sb.set_border_width_all(1)
-		sb.border_color = Color(1, 1, 1, 0.2)
-	b.add_theme_stylebox_override("normal", sb)
-	var sbh: StyleBoxFlat = sb.duplicate()
-	sbh.bg_color = sb.bg_color.lightened(0.12) if accent else Color(1, 1, 1, 0.15)
-	b.add_theme_stylebox_override("hover", sbh)
-	var sbp: StyleBoxFlat = sb.duplicate()
-	sbp.bg_color = sb.bg_color.darkened(0.15)
-	b.add_theme_stylebox_override("pressed", sbp)
-	b.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	UiStyle.apply_button(b, accent)
 	return b
 
 
@@ -425,52 +407,57 @@ func _card_info(c: Dictionary) -> Dictionary:
 func _make_card(card: Dictionary) -> PanelContainer:
 	var info := _card_info(card)
 	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(210, 190)
+	panel.custom_minimum_size = Vector2(228, 236)
 	panel.focus_mode = Control.FOCUS_ALL
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.09, 0.095, 0.13, 0.97)
-	sb.set_corner_radius_all(14)
-	sb.set_border_width_all(2)
-	sb.border_color = info["color"]
-	sb.content_margin_left = 18
-	sb.content_margin_right = 18
-	sb.content_margin_top = 16
-	sb.content_margin_bottom = 16
+	var sb: StyleBox = UiStyle.texture_box("res://assets/ui/panel.png", 52.0, 18.0)
+	if sb is StyleBoxTexture:
+		(sb as StyleBoxTexture).modulate_color = Color(1, 1, 1)
 	panel.add_theme_stylebox_override("panel", sb)
 	var v := VBoxContainer.new()
-	v.add_theme_constant_override("separation", 8)
+	v.add_theme_constant_override("separation", 6)
 	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	panel.add_child(v)
+	var icon_id: String = str(card.get("id", "hp"))
+	if str(card.get("kind", "")) == "heal":
+		icon_id = "hp"
+	var ic := TextureRect.new()
+	ic.texture = SpriteLibrary.icon(icon_id)
+	ic.custom_minimum_size = Vector2(48, 48)
+	ic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	ic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	ic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ic.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	v.add_child(ic)
 	var tag := Label.new()
 	tag.text = info["tag"]
 	tag.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	tag.add_theme_font_size_override("font_size", 12)
 	tag.add_theme_color_override("font_color", info["color"])
 	v.add_child(tag)
 	var title := Label.new()
 	title.text = info["title"]
 	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	title.add_theme_font_size_override("font_size", 24)
-	title.add_theme_color_override("font_color", Color.WHITE)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 22)
+	title.add_theme_color_override("font_color", UiStyle.INK)
 	v.add_child(title)
-	v.add_child(_spacer(6))
 	var desc := Label.new()
 	desc.text = info["desc"]
 	desc.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	desc.clip_text = true
 	desc.add_theme_font_size_override("font_size", 12)
-	desc.add_theme_color_override("font_color", Color(1, 1, 1, 0.65))
+	desc.add_theme_color_override("font_color", Color(UiStyle.INK.r, UiStyle.INK.g, UiStyle.INK.b, 0.72))
 	desc.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	desc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	desc.custom_minimum_size = Vector2(0, 0)
 	v.add_child(desc)
 	var hint := Label.new()
-	hint.text = "点击或按 确认 选择"
+	hint.text = "点击选择"
 	hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint.add_theme_font_size_override("font_size", 11)
-	hint.add_theme_color_override("font_color", Color(1, 1, 1, 0.3))
+	hint.add_theme_color_override("font_color", Color(UiStyle.WOOD.r, UiStyle.WOOD.g, UiStyle.WOOD.b, 0.7))
 	v.add_child(hint)
 	# 焦点样式
 	panel.focus_entered.connect(func(): panel.modulate = Color(1.15, 1.15, 1.15))

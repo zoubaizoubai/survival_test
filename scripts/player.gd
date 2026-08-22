@@ -7,6 +7,7 @@ signal died
 
 const ProjectileScript := preload("res://scripts/projectile.gd")
 const Settings := preload("res://scripts/settings.gd")
+const SpriteLibrary := preload("res://scripts/sprite_library.gd")
 
 const BASE_SPEED := 235.0
 const BASE_MAGNET := 95.0
@@ -26,6 +27,8 @@ var passives := {}
 var orbit_angle := 0.0
 var orbit_hits := {}
 var time_alive := 0.0
+var anim: AnimatedSprite2D
+var _attack_t := 0.0
 
 
 func _ready() -> void:
@@ -33,6 +36,10 @@ func _ready() -> void:
 	max_hp = BASE_HP
 	hp = max_hp
 	add_weapon("dagger")
+	anim = SpriteLibrary.make_sprite("player", 15.0)
+	if anim:
+		add_child(anim)
+		anim.animation_finished.connect(_on_anim_finished)
 
 
 func _process(delta: float) -> void:
@@ -47,6 +54,8 @@ func _process(delta: float) -> void:
 		modulate.a = 1.0
 	else:
 		modulate.a = 0.55 + 0.45 * absf(sin(time_alive * 30.0)) if flash_on else 0.78
+	_attack_t = maxf(_attack_t - delta, 0.0)
+	_update_anim()
 	queue_redraw()
 
 
@@ -212,6 +221,7 @@ func _fire_dagger(wid: String = "dagger") -> bool:
 		var d := dir0.rotated(spread)
 		game.spawn_projectile(d, st["dmg"], st["pierce"], position + d * 16.0)
 	game.sfx.play("shoot")
+	_play_attack()
 	return true
 
 
@@ -230,6 +240,7 @@ func _fire_boomerang(wid: String = "boomerang") -> bool:
 		var dmg: float = float(st.get("dmg", 16.0))
 		game.spawn_boomerang(d, dmg, pierce, position + d * 14.0, spd)
 	game.sfx.play("shoot")
+	_play_attack()
 	return true
 
 
@@ -323,8 +334,40 @@ func _orbit_damage(delta: float) -> void:
 				break
 
 
+func _play_attack() -> void:
+	_attack_t = 0.35
+	if anim and anim.sprite_frames and anim.sprite_frames.has_animation("attack"):
+		if anim.animation != "attack":
+			anim.play("attack")
+
+
+func _on_anim_finished() -> void:
+	if anim and anim.animation == "attack":
+		_attack_t = 0.0
+		_update_anim()
+
+
+func _update_anim() -> void:
+	if anim == null:
+		return
+	anim.flip_h = facing.x < 0.0
+	if _attack_t > 0.0 and anim.sprite_frames.has_animation("attack"):
+		if anim.animation != "attack" or not anim.is_playing():
+			anim.play("attack")
+		return
+	var moving: bool = move_vec.length() > 0.08
+	var want: String = "walk" if moving else "idle"
+	if not anim.sprite_frames.has_animation(want):
+		want = "walk" if anim.sprite_frames.has_animation("walk") else "idle"
+	if anim.animation != want or not anim.is_playing():
+		anim.play(want)
+
+
 func _draw() -> void:
 	var flash_on2: bool = Settings.is_flash_enabled()
+	draw_set_transform(Vector2(0, 10.0), 0.0, Vector2(1.0, 0.38))
+	draw_circle(Vector2.ZERO, 13.0, Color(0, 0, 0, 0.22))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	# frost 预警环（与 aura 叠加）
 	if weapons.has("frost") or weapons.has("frost_evo"):
 		var fid: String = "frost" if weapons.has("frost") else "frost_evo"
@@ -339,15 +382,16 @@ func _draw() -> void:
 		var r: float = st["radius"] * (1.0 + 0.03 * sin(time_alive * 4.0))
 		draw_circle(Vector2.ZERO, r, Color(1.0, 0.9, 0.5, 0.055))
 		draw_arc(Vector2.ZERO, r, 0, TAU, 64, Color(1.0, 0.85, 0.4, 0.22), 2.0, true)
-	if weapons.has("orbit"):
+	if weapons.has("orbit") or weapons.has("orbit_evo"):
 		for pos in orb_positions():
 			draw_circle(pos, 9.0, Color(0.75, 0.85, 1.0, 0.95))
 			draw_circle(pos, 4.5, Color(1, 1, 1, 0.95))
-	draw_circle(Vector2.ZERO, 15.0, Color(0.12, 0.35, 0.5))
-	draw_circle(Vector2.ZERO, 11.0, Color(0.35, 0.85, 1.0))
-	draw_circle(Vector2.ZERO, 5.0, Color(1, 1, 1))
-	var tip := facing * 21.0
-	draw_colored_polygon(PackedVector2Array([tip, facing.rotated(0.5) * 12.0, facing.rotated(-0.5) * 12.0]), Color(0.8, 0.97, 1.0))
+	if anim == null:
+		draw_circle(Vector2.ZERO, 15.0, Color(0.12, 0.35, 0.5))
+		draw_circle(Vector2.ZERO, 11.0, Color(0.35, 0.85, 1.0))
+		draw_circle(Vector2.ZERO, 5.0, Color(1, 1, 1))
+		var tip := facing * 21.0
+		draw_colored_polygon(PackedVector2Array([tip, facing.rotated(0.5) * 12.0, facing.rotated(-0.5) * 12.0]), Color(0.8, 0.97, 1.0))
 	if hp < max_hp * 0.3 and not dead:
 		var a := (0.25 + 0.2 * sin(time_alive * 8.0)) if flash_on2 else 0.16
 		draw_arc(Vector2.ZERO, 19.0, 0, TAU, 32, Color(1.0, 0.3, 0.3, a), 2.5, true)

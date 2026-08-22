@@ -61,11 +61,12 @@ func _draw() -> void:
 		var is_wide: bool = vp.x / maxf(vp.y, 1.0) > 1.95
 		if is_wide:
 			base.x += 16.0
-		draw_circle(base, RADIUS, Color(1, 1, 1, 0.03))
-		draw_arc(base, RADIUS, 0, TAU, 40, Color(1, 1, 1, 0.12), 1.5, true)
+		draw_circle(base, RADIUS, Color(0.18, 0.12, 0.08, 0.18))
+		draw_arc(base, RADIUS, 0, TAU, 40, Color(0.96, 0.90, 0.78, 0.28), 2.5, true)
+		draw_circle(base, 18.0, Color(0.94, 0.42, 0.38, 0.22))
 		return
-	draw_circle(origin, RADIUS, Color(1, 1, 1, 0.06))
-	draw_arc(origin, RADIUS, 0, TAU, 40, Color(1, 1, 1, 0.25), 2.0, true)
+	draw_circle(origin, RADIUS, Color(0.18, 0.12, 0.08, 0.28))
+	draw_arc(origin, RADIUS, 0, TAU, 40, Color(0.96, 0.90, 0.78, 0.55), 3.0, true)
 	var knob := origin + vector * RADIUS
-	draw_circle(knob, 26.0, Color(0.4, 0.85, 1.0, 0.35))
-	draw_circle(knob, 18.0, Color(0.6, 0.92, 1.0, 0.7))
+	draw_circle(knob, 26.0, Color(0.94, 0.42, 0.38, 0.55))
+	draw_circle(knob, 18.0, Color(0.98, 0.62, 0.48, 0.9))

@@ -5,9 +5,9 @@ var game: Node2D
 
 func _draw() -> void:
 	var a: float = game.ARENA
-	draw_rect(Rect2(-a - 400, -a - 400, (a + 400) * 2, (a + 400) * 2), Color(0.05, 0.052, 0.07))
-	draw_rect(Rect2(-a, -a, a * 2, a * 2), Color(0.075, 0.078, 0.105))
-	draw_rect(Rect2(-a, -a, a * 2, a * 2), Color(0.35, 0.55, 0.75, 0.5), false, 5.0)
+	draw_rect(Rect2(-a - 400, -a - 400, (a + 400) * 2, (a + 400) * 2), Color(0.07, 0.10, 0.09))
+	draw_rect(Rect2(-a, -a, a * 2, a * 2), Color(0.10, 0.14, 0.13))
+	draw_rect(Rect2(-a, -a, a * 2, a * 2), Color(0.45, 0.62, 0.48, 0.35), false, 5.0)
 	var step := 130.0
 	var line_c := Color(1, 1, 1, 0.032)
 	var x := -a

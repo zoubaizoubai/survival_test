@@ -4,6 +4,7 @@ const Settings := preload("res://scripts/settings.gd")
 const SaveData := preload("res://scripts/save_data.gd")
 const MusicScript := preload("res://scripts/music.gd")
 const GameData := preload("res://scripts/game_data.gd")
+const UiStyle := preload("res://scripts/ui_style.gd")
 
 var settings_layer: Control
 var volume_slider: HSlider
@@ -43,6 +44,7 @@ func _ready() -> void:
 	# 默认焦点
 	if start_btn:
 		start_btn.grab_focus()
+	_rebuild_title_layout()
 	# 响应式：监听视口变化
 	get_viewport().size_changed.connect(_on_viewport_resized)
 	_on_viewport_resized()
@@ -124,20 +126,102 @@ func _refresh_stats_display() -> void:
 		unlock_label.text = "解锁: " + " · ".join(parts) if not parts.is_empty() else ""
 
 
+func _rebuild_title_layout() -> void:
+	if has_node("TitleRoot"):
+		return
+	var bg: ColorRect = get_node_or_null("Background") as ColorRect
+	if bg:
+		bg.color = Color(0.10, 0.14, 0.16, 1.0)
+	var glow_top: ColorRect = get_node_or_null("GlowTop") as ColorRect
+	if glow_top:
+		glow_top.color = Color(0.94, 0.42, 0.38, 0.10)
+	var old: Control = get_node_or_null("CenterContainer") as Control
+	var vbox: VBoxContainer = get_node_or_null("CenterContainer/VBoxContainer") as VBoxContainer
+	if vbox == null:
+		return
+	var icon_node: Control = vbox.get_node_or_null("Icon") as Control
+	if icon_node:
+		icon_node.visible = false
+	var title: Label = vbox.get_node_or_null("Title") as Label
+	if title:
+		title.add_theme_font_size_override("font_size", 56)
+		title.add_theme_color_override("font_color", Color(1.0, 0.96, 0.88))
+		title.add_theme_color_override("font_outline_color", Color(0.18, 0.12, 0.08, 0.9))
+		title.add_theme_constant_override("outline_size", 8)
+	var subtitle: Label = vbox.get_node_or_null("Subtitle") as Label
+	if subtitle:
+		subtitle.text = "活下去，成为最后一人"
+		subtitle.add_theme_color_override("font_color", Color(1, 0.93, 0.8, 0.88))
+	var start_btn: Button = vbox.get_node_or_null("StartButton") as Button
+	var settings_btn: Button = vbox.get_node_or_null("SettingsButton") as Button
+	var exit_btn: Button = vbox.get_node_or_null("ExitButton") as Button
+	if start_btn:
+		start_btn.custom_minimum_size = Vector2(280, 60)
+		UiStyle.apply_button(start_btn, true)
+	if settings_btn:
+		settings_btn.custom_minimum_size = Vector2(280, 50)
+		UiStyle.apply_button(settings_btn, false)
+	if exit_btn:
+		exit_btn.custom_minimum_size = Vector2(280, 50)
+		UiStyle.apply_button(exit_btn, false)
+	if stats_label:
+		stats_label.add_theme_color_override("font_color", Color(1, 0.95, 0.85, 0.82))
+		stats_label.add_theme_font_size_override("font_size", 13)
+	if unlock_label:
+		unlock_label.add_theme_color_override("font_color", Color(1, 0.9, 0.7, 0.7))
+	var root := Control.new()
+	root.name = "TitleRoot"
+	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(root)
+	move_child(root, 3)
+	var hero := TextureRect.new()
+	hero.name = "Hero"
+	hero.texture = UiStyle.tex("res://assets/ui/home_hero.png")
+	hero.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	hero.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	hero.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hero.set_anchors_preset(Control.PRESET_LEFT_WIDE)
+	hero.anchor_right = 0.56
+	hero.offset_left = 0
+	hero.offset_right = 0
+	hero.offset_top = 0
+	hero.offset_bottom = 0
+	root.add_child(hero)
+	var shade := ColorRect.new()
+	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	shade.color = Color(0.05, 0.04, 0.06, 0.18)
+	shade.set_anchors_preset(Control.PRESET_RIGHT_WIDE)
+	shade.anchor_left = 0.48
+	root.add_child(shade)
+	if old:
+		old.anchor_left = 0.46
+		old.anchor_right = 1.0
+		old.anchor_top = 0.0
+		old.anchor_bottom = 1.0
+		old.offset_left = 0
+		old.offset_right = -16
+		old.offset_top = 0
+		old.offset_bottom = 0
+		old.visible = true
+	var tip: Label = vbox.get_node_or_null("Tip") as Label
+	if tip:
+		tip.text = "触摸左下移动 · 自动攻击 · 撑过 5 分钟"
+		tip.add_theme_color_override("font_color", Color(1, 1, 1, 0.5))
+
+
 func _on_viewport_resized() -> void:
 	# 针对 20:9 等超宽屏，限制中央容器最大宽度并处理安全区域
 	var vp: Vector2 = get_viewport_rect().size
-	var center: CenterContainer = get_node_or_null("CenterContainer") as CenterContainer
-	if center:
-		# 在超宽屏下保持内容居中，避免拉伸
-		center.custom_minimum_size = Vector2.ZERO
-	# 可在此根据 vp 调整字体或间距（示例：超宽时略缩小标题）
 	var title: Label = get_node_or_null("CenterContainer/VBoxContainer/Title") as Label
 	if title:
 		if vp.x / maxf(vp.y, 1.0) > 2.0:
-			title.add_theme_font_size_override("font_size", 52)
+			title.add_theme_font_size_override("font_size", 46)
 		else:
-			title.add_theme_font_size_override("font_size", 64)
+			title.add_theme_font_size_override("font_size", 56)
+	var hero: TextureRect = get_node_or_null("TitleRoot/Hero") as TextureRect
+	if hero:
+		hero.anchor_right = 0.62 if vp.x / maxf(vp.y, 1.0) > 1.95 else 0.56
 
 
 func _build_settings_layer() -> void:
@@ -159,17 +243,8 @@ func _build_settings_layer() -> void:
 	center.mouse_filter = Control.MOUSE_FILTER_PASS
 	settings_layer.add_child(center)
 	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(420, 460)
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.09, 0.095, 0.13, 0.98)
-	sb.set_corner_radius_all(16)
-	sb.set_border_width_all(1)
-	sb.border_color = Color(1, 1, 1, 0.12)
-	sb.content_margin_left = 24
-	sb.content_margin_right = 24
-	sb.content_margin_top = 20
-	sb.content_margin_bottom = 20
-	panel.add_theme_stylebox_override("panel", sb)
+	panel.custom_minimum_size = Vector2(440, 500)
+	panel.add_theme_stylebox_override("panel", UiStyle.texture_box("res://assets/ui/panel.png", 48.0, 22.0))
 	center.add_child(panel)
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 16)
@@ -179,7 +254,7 @@ func _build_settings_layer() -> void:
 	title.text = "设  置"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 26)
-	title.add_theme_color_override("font_color", Color(1.0, 0.9, 0.5))
+	title.add_theme_color_override("font_color", UiStyle.INK)
 	vbox.add_child(title)
 	vbox.add_child(_make_separator())
 	# 音量行
@@ -190,7 +265,7 @@ func _build_settings_layer() -> void:
 	vol_title.text = "主音量"
 	vol_title.custom_minimum_size = Vector2(80, 0)
 	vol_title.add_theme_font_size_override("font_size", 14)
-	vol_title.add_theme_color_override("font_color", Color(1, 1, 1, 0.85))
+	vol_title.add_theme_color_override("font_color", UiStyle.INK)
 	vol_row.add_child(vol_title)
 	volume_slider = HSlider.new()
 	volume_slider.min_value = 0.0
@@ -205,7 +280,7 @@ func _build_settings_layer() -> void:
 	volume_label.text = "%d%%" % int(Settings.master_volume * 100)
 	volume_label.custom_minimum_size = Vector2(44, 0)
 	volume_label.add_theme_font_size_override("font_size", 14)
-	volume_label.add_theme_color_override("font_color", Color(0.8, 0.9, 1.0))
+	volume_label.add_theme_color_override("font_color", UiStyle.WOOD)
 	vol_row.add_child(volume_label)
 	vbox.add_child(vol_row)
 	# 音乐行
@@ -216,7 +291,7 @@ func _build_settings_layer() -> void:
 	music_title.text = "音乐"
 	music_title.custom_minimum_size = Vector2(80, 0)
 	music_title.add_theme_font_size_override("font_size", 14)
-	music_title.add_theme_color_override("font_color", Color(1, 1, 1, 0.85))
+	music_title.add_theme_color_override("font_color", UiStyle.INK)
 	music_row.add_child(music_title)
 	music_slider = HSlider.new()
 	music_slider.min_value = 0.0
@@ -231,7 +306,7 @@ func _build_settings_layer() -> void:
 	music_label.text = "%d%%" % int(Settings.music_volume * 100)
 	music_label.custom_minimum_size = Vector2(44, 0)
 	music_label.add_theme_font_size_override("font_size", 14)
-	music_label.add_theme_color_override("font_color", Color(0.8, 0.9, 1.0))
+	music_label.add_theme_color_override("font_color", UiStyle.WOOD)
 	music_row.add_child(music_label)
 	vbox.add_child(music_row)
 	# 音效行
@@ -242,7 +317,7 @@ func _build_settings_layer() -> void:
 	sfx_title.text = "音效"
 	sfx_title.custom_minimum_size = Vector2(80, 0)
 	sfx_title.add_theme_font_size_override("font_size", 14)
-	sfx_title.add_theme_color_override("font_color", Color(1, 1, 1, 0.85))
+	sfx_title.add_theme_color_override("font_color", UiStyle.INK)
 	sfx_row.add_child(sfx_title)
 	sfx_slider = HSlider.new()
 	sfx_slider.min_value = 0.0
@@ -257,7 +332,7 @@ func _build_settings_layer() -> void:
 	sfx_label.text = "%d%%" % int(Settings.sfx_volume * 100)
 	sfx_label.custom_minimum_size = Vector2(44, 0)
 	sfx_label.add_theme_font_size_override("font_size", 14)
-	sfx_label.add_theme_color_override("font_color", Color(0.8, 0.9, 1.0))
+	sfx_label.add_theme_color_override("font_color", UiStyle.WOOD)
 	sfx_row.add_child(sfx_label)
 	vbox.add_child(sfx_row)
 	# 震动行
@@ -267,7 +342,7 @@ func _build_settings_layer() -> void:
 	shake_label.text = "屏幕震动"
 	shake_label.custom_minimum_size = Vector2(80, 0)
 	shake_label.add_theme_font_size_override("font_size", 14)
-	shake_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.85))
+	shake_label.add_theme_color_override("font_color", UiStyle.INK)
 	shake_row.add_child(shake_label)
 	shake_check = CheckBox.new()
 	shake_check.text = "开启"
@@ -287,7 +362,7 @@ func _build_settings_layer() -> void:
 	flash_label.text = "强闪烁"
 	flash_label.custom_minimum_size = Vector2(80, 0)
 	flash_label.add_theme_font_size_override("font_size", 14)
-	flash_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.85))
+	flash_label.add_theme_color_override("font_color", UiStyle.INK)
 	flash_row.add_child(flash_label)
 	flash_check = CheckBox.new()
 	flash_check.text = "开启"
@@ -306,7 +381,7 @@ func _build_settings_layer() -> void:
 	fps_label.text = "显示信息"
 	fps_label.custom_minimum_size = Vector2(80, 0)
 	fps_label.add_theme_font_size_override("font_size", 14)
-	fps_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.85))
+	fps_label.add_theme_color_override("font_color", UiStyle.INK)
 	fps_row.add_child(fps_label)
 	fps_check = CheckBox.new()
 	fps_check.text = "显示 FPS"
@@ -326,14 +401,14 @@ func _build_settings_layer() -> void:
 	unlock_title.text = "进 度"
 	unlock_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	unlock_title.add_theme_font_size_override("font_size", 14)
-	unlock_title.add_theme_color_override("font_color", Color(0.85, 0.9, 1.0, 0.75))
+	unlock_title.add_theme_color_override("font_color", UiStyle.WOOD)
 	vbox.add_child(unlock_title)
 	var unlock_info := Label.new()
 	unlock_info.name = "UnlockInfo"
 	unlock_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	unlock_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	unlock_info.add_theme_font_size_override("font_size", 12)
-	unlock_info.add_theme_color_override("font_color", Color(1, 1, 1, 0.65))
+	unlock_info.add_theme_color_override("font_color", Color(UiStyle.INK.r, UiStyle.INK.g, UiStyle.INK.b, 0.75))
 	vbox.add_child(unlock_info)
 	var clear_btn := Button.new()
 	clear_btn.text = "清除存档"
@@ -488,6 +563,8 @@ func _hide_settings() -> void:
 	if settings_layer:
 		settings_layer.visible = false
 	var start_btn: Button = get_node_or_null("CenterContainer/VBoxContainer/StartButton") as Button
+	if start_btn == null:
+		start_btn = get_node_or_null("CenterContainer/VBoxContainer/StartButton") as Button
 	if start_btn:
 		start_btn.grab_focus()
 

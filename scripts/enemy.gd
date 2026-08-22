@@ -4,6 +4,7 @@ signal died(enemy)
 
 const GameData := preload("res://scripts/game_data.gd")
 const Settings := preload("res://scripts/settings.gd")
+const SpriteLibrary := preload("res://scripts/sprite_library.gd")
 
 # 保留内置默认值作为回退，实际数值由 data/balance.json 提供
 const STATS_FALLBACK := {
@@ -63,6 +64,7 @@ var boss_has_transformed := false
 # 减速状态（frost）
 var slow_t := 0.0
 var slow_factor := 1.0
+var anim: AnimatedSprite2D
 
 
 func _ready() -> void:
@@ -103,6 +105,9 @@ func _ready() -> void:
 				boss_shock_radius = float(ph.get("shock_radius", 120.0))
 				boss_shock_cd = float(ph.get("shock_cd", 4.0)) * 0.5
 				boss_summon_t = float(ph.get("summon_interval", 5.5))
+	anim = SpriteLibrary.make_sprite(kind, radius)
+	if anim:
+		add_child(anim)
 
 
 func _process(delta: float) -> void:
@@ -130,6 +135,7 @@ func _process(delta: float) -> void:
 			_process_boss(delta, pl)
 		_:
 			_process_chase(delta, pl)
+	_update_anim(pl)
 	queue_redraw()
 
 
@@ -341,6 +347,43 @@ func apply_slow(factor: float, dur: float) -> void:
 	flash = maxf(flash, 0.6 if Settings.is_flash_enabled() else 0.25)
 
 
+func _update_anim(pl: Node2D) -> void:
+	if anim == null:
+		return
+	var dir_x: float = 0.0
+	if pl:
+		dir_x = pl.global_position.x - global_position.x
+	if kind == "charger" and charge_state == "dash":
+		dir_x = dash_dir.x
+	anim.flip_h = dir_x < 0.0
+	var want := "walk"
+	match behavior:
+		"charger":
+			if charge_state == "dash" or charge_state == "windup":
+				want = "attack"
+		"caster":
+			if is_casting:
+				want = "attack"
+		"boss":
+			if boss_warning_t > 0.0:
+				want = "attack"
+		_:
+			if attack_cd > 0.55:
+				want = "attack"
+	if anim.sprite_frames == null:
+		return
+	if not anim.sprite_frames.has_animation(want):
+		want = "walk"
+	if not anim.sprite_frames.has_animation(want):
+		return
+	if anim.animation != want or not anim.is_playing():
+		anim.play(want)
+	var flash_mix: float = flash * 0.55
+	anim.modulate = Color(1, 1, 1).lerp(Color(1.4, 1.4, 1.4), flash_mix)
+	if slow_t > 0.05:
+		anim.modulate = anim.modulate.lerp(Color(0.65, 0.85, 1.2), 0.4)
+
+
 func take_hit(amount: float, kdir: Vector2 = Vector2.ZERO) -> void:
 	if dead:
 		return
@@ -388,6 +431,27 @@ func _draw() -> void:
 	var col := base_color.lerp(Color(1, 1, 1), flash * 0.75)
 	if is_slowed:
 		col = col.lerp(Color(0.6, 0.8, 1.0), 0.35 * clampf(slow_t / 2.0, 0.0, 1.0))
+	draw_set_transform(Vector2(0, radius * 0.55), 0.0, Vector2(1.0, 0.38))
+	draw_circle(Vector2.ZERO, radius * 0.9, Color(0, 0, 0, 0.22))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	if anim:
+		if is_slowed:
+			draw_arc(Vector2.ZERO, radius + 4.0, 0, TAU, 16, Color(0.55, 0.78, 1.0, 0.5), 1.5, true)
+		if hp < max_hp and not dead:
+			var w2 := radius * 2.2
+			var pct2 := clampf(hp / max_hp, 0.0, 1.0)
+			var top2 := -radius - 11.0
+			if behavior == "boss":
+				w2 = radius * 2.8
+				top2 = -radius - 18.0
+			draw_rect(Rect2(-w2 * 0.5, top2, w2, 4.0), Color(0, 0, 0, 0.55))
+			var bar_c2 := Color(0.35, 0.95, 0.45)
+			if pct2 <= 0.25:
+				bar_c2 = Color(1.0, 0.35, 0.3)
+			elif pct2 <= 0.5:
+				bar_c2 = Color(1.0, 0.8, 0.3)
+			draw_rect(Rect2(-w2 * 0.5, top2, w2 * pct2, 4.0), bar_c2)
+		return
 	match kind:
 		"slime":
 			var bob := sin(wob * 6.0 + wobble_seed) * 2.0
