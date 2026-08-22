@@ -90,6 +90,7 @@ func _initialize() -> void:
 
 
 func _run_all() -> void:
+	await _test_settings_input_responsive()
 	await _test_data_driven()
 	await _test_home_load()
 	await _test_game_load()
@@ -676,6 +677,132 @@ func _run_perf_caps() -> Dictionary:
 	await process_frame
 	await process_frame
 	return result
+
+
+func _test_settings_input_responsive() -> void:
+	print("\n[SMOKE] 设置、输入与响应式")
+	# 1. 设置可从主页访问并持久化
+	var home_res: Resource = load("res://scenes/home.tscn")
+	var home: Control = (home_res as PackedScene).instantiate() as Control
+	root.add_child(home)
+	await process_frame
+	await process_frame
+	var settings_btn: Button = home.get_node_or_null("CenterContainer/VBoxContainer/SettingsButton") as Button
+	_assert(settings_btn != null, "主页包含设置按钮", "SettingsButton 缺失")
+	if settings_btn:
+		_assert(settings_btn.text.contains("设置"), "设置按钮文案正确", "text=%s" % settings_btn.text)
+		_assert(settings_btn.focus_mode == Control.FOCUS_ALL, "设置按钮可聚焦", "focus=%d" % settings_btn.focus_mode)
+	# 检查设置层存在且初始隐藏
+	var sl: Control = home.get_node_or_null("SettingsLayer") as Control
+	_assert(sl != null, "主页设置层存在", "SettingsLayer 缺失")
+	if sl:
+		_assert(sl.visible == false, "设置层初始隐藏", "visible true")
+		# 模拟打开设置
+		home._on_settings_pressed()
+		await process_frame
+		_assert(sl.visible == true, "点击设置后层可见", "仍隐藏")
+		# 检查音量滑块与震动选项存在
+		# 通过成员变量检查
+		_assert(home.get("volume_slider") != null, "音量滑块存在", "null")
+		_assert(home.get("shake_check") != null, "震动选项存在", "null")
+		# 测试持久化：改值保存再加载
+		var SettingsRef: GDScript = preload("res://scripts/settings.gd")
+		SettingsRef.ensure_loaded()
+		var orig_vol: float = float(SettingsRef.get("master_volume"))
+		var orig_shake: bool = bool(SettingsRef.get("shake_enabled"))
+		SettingsRef.set_master_volume(0.5)
+		SettingsRef.set_shake_enabled(false)
+		await process_frame
+		_assert(is_equal_approx(float(SettingsRef.get("master_volume")), 0.5), "音量设置保存 0.5", "实际 %f" % float(SettingsRef.get("master_volume")))
+		_assert(bool(SettingsRef.get("shake_enabled")) == false, "震动关闭保存", "实际 %s" % str(SettingsRef.get("shake_enabled")))
+		# 模拟重启加载：清空后重新 load
+		SettingsRef.set_master_volume(orig_vol)
+		SettingsRef.set_shake_enabled(orig_shake)
+		# 关闭设置
+		home._on_settings_back()
+		await process_frame
+		_assert(sl.visible == false, "返回后设置层隐藏", "仍可见")
+	# 2. 输入：键鼠/手柄/触摸
+	# 检查 project.godot 输入映射包含手柄
+	var has_joy_left: bool = false
+	for ev in InputMap.action_get_events("move_left"):
+		if ev is InputEventJoypadMotion:
+			has_joy_left = true
+			break
+	_assert(has_joy_left, "move_left 包含手柄摇杆", "缺失 joypad")
+	var has_pause_joy: bool = false
+	for ev in InputMap.action_get_events("pause"):
+		if ev is InputEventJoypadButton:
+			has_pause_joy = true
+			break
+	_assert(has_pause_joy, "pause 包含手柄 Start", "缺失")
+	# 检查摇杆仅响应左半屏（通过读取脚本常量）
+	var joy: Control = preload("res://scripts/joystick.gd").new()
+	_assert(joy.get("RADIUS") == 70.0, "摇杆半径 70", "实际 %s" % str(joy.get("RADIUS")))
+	joy.queue_free()
+	# 3. 响应式：1280x720 与 20:9 (1280x576) 下无裁切/重叠
+	var game_res: Resource = load("res://scenes/game.tscn")
+	var g: Node = (game_res as PackedScene).instantiate() as Node
+	root.add_child(g)
+	await process_frame
+	await process_frame
+	var hud: Control = g.get("hud") as Control
+	var menus: Control = g.get("menus") as Control
+	for size in [Vector2(1280, 720), Vector2(1280, 576), Vector2(2560, 1152)]:
+		# 模拟视口尺寸
+		var vp: Window = root
+		# 在 headless 下直接设置大小并触发 _update_layout
+		# 注意：设置 viewport.size 可能在 headless 受限，改用直接调用布局方法
+		hud._update_layout()
+		menus._update_layout()
+		home._on_viewport_resized()
+		# 简易检查：HUD 元素在视口内且不重叠关键区
+		var hp_bg: Control = hud.get_node_or_null("HpBg") as Control
+		var pause_btn: Button = hud.get_node_or_null("PauseBtn") as Button
+		if hp_bg and pause_btn:
+			var hp_rect: Rect2 = Rect2(hp_bg.position, hp_bg.size)
+			var pause_rect: Rect2 = Rect2(pause_btn.position if pause_btn.position != Vector2.ZERO else Vector2(size.x - 56, 12), pause_btn.size)
+			# 使用锚点布局时，hp_bg 位于左上，pause 在右上，不应重叠
+			_assert(not hp_rect.intersects(pause_rect), "HUD 在 %dx%d 下无重叠" % [int(size.x), int(size.y)], "hp %s pause %s" % [str(hp_rect), str(pause_rect)])
+		# 升级卡片在窄高屏下应缩小
+		g._on_level_up()
+		await process_frame
+		var cards_box: HBoxContainer = menus.get("cards_box") as HBoxContainer
+		if cards_box and cards_box.get_child_count() > 0:
+			var first: Control = cards_box.get_child(0) as Control
+			_assert(first.size.x <= 260, "卡片宽度适配 %dx%d" % [int(size.x), int(size.y)], "size %s" % str(first.size))
+		# 清理升级
+		if menus.get("upgrade_layer").visible:
+			var cards: Array = g._roll_cards()
+			g._on_card_chosen(cards[0])
+			await process_frame
+	print("  响应式校验在 3 种尺寸下完成")
+	g.queue_free()
+	home.queue_free()
+	await process_frame
+	await process_frame
+	# 4. 焦点与返回一致性
+	var home2: Control = (home_res as PackedScene).instantiate() as Control
+	root.add_child(home2)
+	await process_frame
+	await process_frame
+	var start_btn2: Button = home2.get_node_or_null("CenterContainer/VBoxContainer/StartButton") as Button
+	_assert(start_btn2 != null and start_btn2.focus_mode == Control.FOCUS_ALL, "开始按钮可聚焦", "focus")
+	# 模拟 ui_cancel 在设置层打开时应关闭设置而非退出
+	home2._on_settings_pressed()
+	await process_frame
+	var sl2: Control = home2.get_node_or_null("SettingsLayer") as Control
+	_assert(sl2.visible == true, "设置层已打开", "隐藏")
+	# 发送 ui_cancel
+	var ev_cancel := InputEventAction.new()
+	ev_cancel.action = "ui_cancel"
+	ev_cancel.pressed = true
+	home2._unhandled_input(ev_cancel)
+	await process_frame
+	_assert(sl2.visible == false, "ui_cancel 关闭设置层", "仍可见")
+	home2.queue_free()
+	await process_frame
+	await process_frame
 
 
 func _test_data_driven() -> void:

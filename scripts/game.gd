@@ -12,6 +12,7 @@ const JoystickScript := preload("res://scripts/joystick.gd")
 const SfxScript := preload("res://scripts/sfx.gd")
 
 const GameData := preload("res://scripts/game_data.gd")
+const Settings := preload("res://scripts/settings.gd")
 
 # 数值由 data/balance.json 集中管理，此处为兼容层：通过 GameData 暴露，保持原有字段名可通过 g.get() 访问
 var ARENA: float:
@@ -127,10 +128,12 @@ func _process(delta: float) -> void:
 		_win()
 		return
 	cam.position = player.position
-	if shake > 0.01:
+	if Settings.is_shake_enabled() and shake > 0.01:
 		shake = maxf(shake - delta * 26.0, 0.0)
 		cam.offset = Vector2(randf_range(-shake, shake), randf_range(-shake, shake))
 	else:
+		if shake > 0.01:
+			shake = maxf(shake - delta * 26.0, 0.0)
 		cam.offset = Vector2.ZERO
 
 

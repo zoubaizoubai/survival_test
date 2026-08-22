@@ -1,5 +1,5 @@
 {
-	"elapsed_msec": 1001,
+	"elapsed_msec": 1146,
 	"godot_version": {
 		"build": "official",
 		"hash": "ed1daf0bf001b61586d9930840f2f1394092c079",
@@ -13,54 +13,54 @@
 	},
 	"scenarios": [
 		{
-			"avg_ms": 0.22417,
+			"avg_ms": 0.223485,
 			"elapsed": 60.0,
 			"enemies": 170,
 			"iterations": 200,
-			"object_count": 2290,
-			"object_nodes": 586,
+			"object_count": 2344,
+			"object_nodes": 594,
 			"pickups": 350,
 			"seed": 1397,
-			"total_nodes": 586
+			"total_nodes": 589
 		},
 		{
-			"avg_ms": 0.227595,
+			"avg_ms": 0.22466,
 			"elapsed": 180.0,
 			"enemies": 171,
 			"iterations": 200,
-			"object_count": 2294,
-			"object_nodes": 587,
+			"object_count": 2348,
+			"object_nodes": 595,
 			"pickups": 350,
 			"seed": 1517,
-			"total_nodes": 587
+			"total_nodes": 590
 		},
 		{
-			"avg_ms": 0.080235,
+			"avg_ms": 0.07963,
 			"elapsed": 300.0,
 			"enemies": 171,
 			"iterations": 200,
-			"object_count": 2292,
-			"object_nodes": 587,
+			"object_count": 2346,
+			"object_nodes": 595,
 			"pickups": 350,
 			"seed": 1637,
-			"total_nodes": 587
+			"total_nodes": 590
 		},
 		{
-			"avg_ms": 0.181545,
+			"avg_ms": 0.185495,
 			"elapsed": 999.0,
 			"enemies": 170,
 			"label": "caps",
-			"object_count": 2299,
+			"object_count": 2355,
 			"pickups": 350,
 			"seed": 11336,
-			"total_nodes": 587
+			"total_nodes": 590
 		}
 	],
 	"seed": 1337,
 	"summary": {
 		"failed": 0,
-		"passed": 153,
-		"total": 153
+		"passed": 176,
+		"total": 176
 	},
-	"timestamp": "2026-08-22 15:08:16"
+	"timestamp": "2026-08-22 15:21:45"
 }

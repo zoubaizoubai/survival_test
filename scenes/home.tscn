@@ -191,6 +191,29 @@ theme_override_styles/hover = SubResource("StyleBoxFlat_start_hover")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_start_pressed")
 theme_override_styles/focus = SubResource("StyleBoxFlat_start_normal")
 text = "▶  开始游戏"
+focus_mode = 2
+focus_neighbor_top = NodePath("../ExitButton")
+focus_neighbor_bottom = NodePath("../SettingsButton")
+focus_next = NodePath("../SettingsButton")
+focus_previous = NodePath("../ExitButton")
+
+[node name="SettingsButton" type="Button" parent="CenterContainer/VBoxContainer"]
+custom_minimum_size = Vector2(260, 48)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 15
+theme_override_colors/font_color = Color(1.0, 1.0, 1.0, 0.75)
+theme_override_colors/font_hover_color = Color(1.0, 1.0, 1.0, 0.95)
+theme_override_styles/normal = SubResource("StyleBoxFlat_exit_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_exit_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_exit_pressed")
+theme_override_styles/focus = SubResource("StyleBoxFlat_exit_normal")
+text = "⚙  设置"
+focus_mode = 2
+focus_neighbor_top = NodePath("../StartButton")
+focus_neighbor_bottom = NodePath("../ExitButton")
+focus_next = NodePath("../ExitButton")
+focus_previous = NodePath("../StartButton")
 
 [node name="ExitButton" type="Button" parent="CenterContainer/VBoxContainer"]
 custom_minimum_size = Vector2(260, 48)
@@ -204,6 +227,11 @@ theme_override_styles/hover = SubResource("StyleBoxFlat_exit_hover")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_exit_pressed")
 theme_override_styles/focus = SubResource("StyleBoxFlat_exit_normal")
 text = "退出游戏"
+focus_mode = 2
+focus_neighbor_top = NodePath("../SettingsButton")
+focus_neighbor_bottom = NodePath("../StartButton")
+focus_next = NodePath("../StartButton")
+focus_previous = NodePath("../SettingsButton")
 
 [node name="Tip" type="Label" parent="CenterContainer/VBoxContainer"]
 layout_mode = 2
@@ -238,4 +266,5 @@ horizontal_alignment = 1
 vertical_alignment = 2
 
 [connection signal="pressed" from="CenterContainer/VBoxContainer/StartButton" to="." method="_on_start_pressed"]
+[connection signal="pressed" from="CenterContainer/VBoxContainer/SettingsButton" to="." method="_on_settings_pressed"]
 [connection signal="pressed" from="CenterContainer/VBoxContainer/ExitButton" to="." method="_on_exit_pressed"]
