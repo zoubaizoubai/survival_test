@@ -1,0 +1,66 @@
+{
+	"elapsed_msec": 732,
+	"godot_version": {
+		"build": "official",
+		"hash": "ed1daf0bf001b61586d9930840f2f1394092c079",
+		"hex": 263938,
+		"major": 4,
+		"minor": 7,
+		"patch": 2,
+		"status": "stable",
+		"string": "4.7.2-stable (official)",
+		"timestamp": 0
+	},
+	"scenarios": [
+		{
+			"avg_ms": 0.164255,
+			"elapsed": 60.0,
+			"enemies": 170,
+			"iterations": 200,
+			"object_count": 2289,
+			"object_nodes": 586,
+			"pickups": 350,
+			"seed": 1397,
+			"total_nodes": 586
+		},
+		{
+			"avg_ms": 0.16446,
+			"elapsed": 180.0,
+			"enemies": 171,
+			"iterations": 200,
+			"object_count": 2293,
+			"object_nodes": 587,
+			"pickups": 350,
+			"seed": 1517,
+			"total_nodes": 587
+		},
+		{
+			"avg_ms": 0.078215,
+			"elapsed": 300.0,
+			"enemies": 171,
+			"iterations": 200,
+			"object_count": 2291,
+			"object_nodes": 587,
+			"pickups": 350,
+			"seed": 1637,
+			"total_nodes": 587
+		},
+		{
+			"avg_ms": 0.121245,
+			"elapsed": 999.0,
+			"enemies": 170,
+			"label": "caps",
+			"object_count": 2300,
+			"pickups": 350,
+			"seed": 11336,
+			"total_nodes": 587
+		}
+	],
+	"seed": 1337,
+	"summary": {
+		"failed": 0,
+		"passed": 89,
+		"total": 89
+	},
+	"timestamp": "2026-08-22 14:53:08"
+}
