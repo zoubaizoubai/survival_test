@@ -97,14 +97,12 @@ func _refresh_unlock_info() -> void:
 	if info == null:
 		return
 	var prog: Dictionary = SaveData.get_unlock_progress()
-	var lines: Array = []
+	var parts: Array = []
 	for uid in prog.keys():
 		var u: Dictionary = prog[uid] as Dictionary
-		var unlocked: bool = bool(u.get("unlocked", false))
-		var desc: String = str(u.get("desc", ""))
 		var name: String = str(u.get("name", uid))
-		lines.append("%s: %s [%s]" % [name, desc, "已解锁" if unlocked else "未解锁"])
-	info.text = "\n".join(lines)
+		parts.append("%s %s" % [name, "已解锁" if bool(u.get("unlocked", false)) else "未解锁"])
+	info.text = " · ".join(parts) if not parts.is_empty() else "尚无解锁记录"
 
 
 func _refresh_stats_display() -> void:
@@ -278,162 +276,54 @@ func _build_settings_layer() -> void:
 	center.mouse_filter = Control.MOUSE_FILTER_PASS
 	settings_layer.add_child(center)
 	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(440, 500)
-	panel.add_theme_stylebox_override("panel", UiStyle.texture_box("res://assets/ui/panel.png", 48.0, 22.0))
+	panel.custom_minimum_size = Vector2(420, 0)
+	panel.clip_contents = true
+	var panel_sb := StyleBoxFlat.new()
+	panel_sb.bg_color = Color(UiStyle.CREAM.r, UiStyle.CREAM.g, UiStyle.CREAM.b, 0.98)
+	panel_sb.set_corner_radius_all(18)
+	panel_sb.set_border_width_all(5)
+	panel_sb.border_color = UiStyle.WOOD
+	panel_sb.content_margin_left = 22
+	panel_sb.content_margin_right = 22
+	panel_sb.content_margin_top = 18
+	panel_sb.content_margin_bottom = 16
+	panel.add_theme_stylebox_override("panel", panel_sb)
 	center.add_child(panel)
 	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 16)
+	vbox.add_theme_constant_override("separation", 12)
 	panel.add_child(vbox)
-	# 标题
 	var title := Label.new()
-	title.text = "设  置"
+	title.text = "设置"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 26)
 	title.add_theme_color_override("font_color", UiStyle.INK)
 	vbox.add_child(title)
 	vbox.add_child(_make_separator())
-	# 音量行
-	var vol_row := HBoxContainer.new()
-	vol_row.add_theme_constant_override("separation", 12)
-	vol_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	var vol_title := Label.new()
-	vol_title.text = "主音量"
-	vol_title.custom_minimum_size = Vector2(80, 0)
-	vol_title.add_theme_font_size_override("font_size", 14)
-	vol_title.add_theme_color_override("font_color", UiStyle.INK)
-	vol_row.add_child(vol_title)
-	volume_slider = HSlider.new()
-	volume_slider.min_value = 0.0
-	volume_slider.max_value = 1.0
-	volume_slider.step = 0.05
+	volume_slider = _make_settings_slider()
 	volume_slider.value = Settings.master_volume
-	volume_slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	volume_slider.focus_mode = Control.FOCUS_ALL
 	volume_slider.value_changed.connect(_on_volume_changed)
-	vol_row.add_child(volume_slider)
 	volume_label = Label.new()
-	volume_label.text = "%d%%" % int(Settings.master_volume * 100)
-	volume_label.custom_minimum_size = Vector2(44, 0)
-	volume_label.add_theme_font_size_override("font_size", 14)
-	volume_label.add_theme_color_override("font_color", UiStyle.WOOD)
-	vol_row.add_child(volume_label)
-	vbox.add_child(vol_row)
-	# 音乐行
-	var music_row := HBoxContainer.new()
-	music_row.add_theme_constant_override("separation", 12)
-	music_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	var music_title := Label.new()
-	music_title.text = "音乐"
-	music_title.custom_minimum_size = Vector2(80, 0)
-	music_title.add_theme_font_size_override("font_size", 14)
-	music_title.add_theme_color_override("font_color", UiStyle.INK)
-	music_row.add_child(music_title)
-	music_slider = HSlider.new()
-	music_slider.min_value = 0.0
-	music_slider.max_value = 1.0
-	music_slider.step = 0.05
+	vbox.add_child(_make_slider_row("主音量", volume_slider, volume_label, int(Settings.master_volume * 100)))
+	music_slider = _make_settings_slider()
 	music_slider.value = Settings.music_volume
-	music_slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	music_slider.focus_mode = Control.FOCUS_ALL
 	music_slider.value_changed.connect(_on_music_changed)
-	music_row.add_child(music_slider)
 	music_label = Label.new()
-	music_label.text = "%d%%" % int(Settings.music_volume * 100)
-	music_label.custom_minimum_size = Vector2(44, 0)
-	music_label.add_theme_font_size_override("font_size", 14)
-	music_label.add_theme_color_override("font_color", UiStyle.WOOD)
-	music_row.add_child(music_label)
-	vbox.add_child(music_row)
-	# 音效行
-	var sfx_row := HBoxContainer.new()
-	sfx_row.add_theme_constant_override("separation", 12)
-	sfx_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	var sfx_title := Label.new()
-	sfx_title.text = "音效"
-	sfx_title.custom_minimum_size = Vector2(80, 0)
-	sfx_title.add_theme_font_size_override("font_size", 14)
-	sfx_title.add_theme_color_override("font_color", UiStyle.INK)
-	sfx_row.add_child(sfx_title)
-	sfx_slider = HSlider.new()
-	sfx_slider.min_value = 0.0
-	sfx_slider.max_value = 1.0
-	sfx_slider.step = 0.05
+	vbox.add_child(_make_slider_row("音乐", music_slider, music_label, int(Settings.music_volume * 100)))
+	sfx_slider = _make_settings_slider()
 	sfx_slider.value = Settings.sfx_volume
-	sfx_slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	sfx_slider.focus_mode = Control.FOCUS_ALL
 	sfx_slider.value_changed.connect(_on_sfx_changed)
-	sfx_row.add_child(sfx_slider)
 	sfx_label = Label.new()
-	sfx_label.text = "%d%%" % int(Settings.sfx_volume * 100)
-	sfx_label.custom_minimum_size = Vector2(44, 0)
-	sfx_label.add_theme_font_size_override("font_size", 14)
-	sfx_label.add_theme_color_override("font_color", UiStyle.WOOD)
-	sfx_row.add_child(sfx_label)
-	vbox.add_child(sfx_row)
-	# 震动行
-	var shake_row := HBoxContainer.new()
-	shake_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	var shake_label := Label.new()
-	shake_label.text = "屏幕震动"
-	shake_label.custom_minimum_size = Vector2(80, 0)
-	shake_label.add_theme_font_size_override("font_size", 14)
-	shake_label.add_theme_color_override("font_color", UiStyle.INK)
-	shake_row.add_child(shake_label)
-	shake_check = CheckBox.new()
-	shake_check.text = "开启"
-	shake_check.button_pressed = Settings.shake_enabled
-	shake_check.focus_mode = Control.FOCUS_ALL
-	shake_check.toggled.connect(_on_shake_toggled)
-	shake_row.add_child(shake_check)
-	shake_row.add_child(Control.new()) # spacer
-	var shake_spacer := Control.new()
-	shake_spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	shake_row.add_child(shake_spacer)
-	vbox.add_child(shake_row)
-	# 强闪烁行
-	var flash_row := HBoxContainer.new()
-	flash_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	var flash_label := Label.new()
-	flash_label.text = "强闪烁"
-	flash_label.custom_minimum_size = Vector2(80, 0)
-	flash_label.add_theme_font_size_override("font_size", 14)
-	flash_label.add_theme_color_override("font_color", UiStyle.INK)
-	flash_row.add_child(flash_label)
-	flash_check = CheckBox.new()
-	flash_check.text = "开启"
-	flash_check.button_pressed = Settings.flash_enabled
-	flash_check.focus_mode = Control.FOCUS_ALL
-	flash_check.toggled.connect(_on_flash_toggled)
-	flash_row.add_child(flash_check)
-	var flash_spacer := Control.new()
-	flash_spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	flash_row.add_child(flash_spacer)
-	vbox.add_child(flash_row)
-	# FPS 行（显示选项）
-	var fps_row := HBoxContainer.new()
-	fps_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	var fps_label := Label.new()
-	fps_label.text = "显示信息"
-	fps_label.custom_minimum_size = Vector2(80, 0)
-	fps_label.add_theme_font_size_override("font_size", 14)
-	fps_label.add_theme_color_override("font_color", UiStyle.INK)
-	fps_row.add_child(fps_label)
-	fps_check = CheckBox.new()
-	fps_check.text = "显示 FPS"
-	fps_check.button_pressed = Settings.fps_visible
-	fps_check.focus_mode = Control.FOCUS_ALL
-	fps_check.toggled.connect(_on_fps_toggled)
-	fps_row.add_child(fps_check)
-	var fps_spacer := Control.new()
-	fps_spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	fps_row.add_child(fps_spacer)
-	vbox.add_child(fps_row)
+	vbox.add_child(_make_slider_row("音效", sfx_slider, sfx_label, int(Settings.sfx_volume * 100)))
 	vbox.add_child(_make_separator())
-	# 按钮行
-	# 解锁进度与清除存档
+	shake_check = CheckBox.new()
+	vbox.add_child(_make_check_row("屏幕震动", shake_check, "开启", Settings.shake_enabled, _on_shake_toggled))
+	flash_check = CheckBox.new()
+	vbox.add_child(_make_check_row("强闪烁", flash_check, "开启", Settings.flash_enabled, _on_flash_toggled))
+	fps_check = CheckBox.new()
+	vbox.add_child(_make_check_row("显示信息", fps_check, "显示 FPS", Settings.fps_visible, _on_fps_toggled))
 	vbox.add_child(_make_separator())
 	var unlock_title := Label.new()
-	unlock_title.text = "进 度"
+	unlock_title.text = "进度"
 	unlock_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	unlock_title.add_theme_font_size_override("font_size", 14)
 	unlock_title.add_theme_color_override("font_color", UiStyle.WOOD)
@@ -442,21 +332,26 @@ func _build_settings_layer() -> void:
 	unlock_info.name = "UnlockInfo"
 	unlock_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	unlock_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	unlock_info.custom_minimum_size = Vector2(0, 36)
 	unlock_info.add_theme_font_size_override("font_size", 12)
-	unlock_info.add_theme_color_override("font_color", Color(UiStyle.INK.r, UiStyle.INK.g, UiStyle.INK.b, 0.75))
+	unlock_info.add_theme_color_override("font_color", Color(UiStyle.INK.r, UiStyle.INK.g, UiStyle.INK.b, 0.8))
 	vbox.add_child(unlock_info)
 	var clear_btn := Button.new()
 	clear_btn.text = "清除存档"
-	clear_btn.custom_minimum_size = Vector2(140, 38)
+	clear_btn.custom_minimum_size = Vector2(160, 36)
 	clear_btn.focus_mode = Control.FOCUS_ALL
-	clear_btn.add_theme_font_size_override("font_size", 12)
+	clear_btn.add_theme_font_size_override("font_size", 13)
+	clear_btn.add_theme_color_override("font_color", Color(0.72, 0.22, 0.18))
+	clear_btn.add_theme_color_override("font_hover_color", Color(0.85, 0.2, 0.16))
 	var sb_clear := StyleBoxFlat.new()
-	sb_clear.bg_color = Color(0.95, 0.35, 0.35, 0.12)
-	sb_clear.set_corner_radius_all(8)
-	sb_clear.set_border_width_all(1)
-	sb_clear.border_color = Color(0.95, 0.35, 0.35, 0.35)
+	sb_clear.bg_color = Color(0.95, 0.35, 0.35, 0.16)
+	sb_clear.set_corner_radius_all(10)
+	sb_clear.set_border_width_all(2)
+	sb_clear.border_color = Color(0.85, 0.32, 0.28, 0.7)
 	clear_btn.add_theme_stylebox_override("normal", sb_clear)
-	clear_btn.add_theme_stylebox_override("hover", sb_clear)
+	var sb_clear_h: StyleBoxFlat = sb_clear.duplicate()
+	sb_clear_h.bg_color = Color(0.95, 0.35, 0.35, 0.28)
+	clear_btn.add_theme_stylebox_override("hover", sb_clear_h)
 	clear_btn.add_theme_stylebox_override("pressed", sb_clear)
 	clear_btn.pressed.connect(func():
 		SaveData.clear()
@@ -466,7 +361,6 @@ func _build_settings_layer() -> void:
 	var cc := CenterContainer.new()
 	cc.add_child(clear_btn)
 	vbox.add_child(cc)
-	# 初始化解锁信息
 	call_deferred("_refresh_unlock_info")
 	vbox.add_child(_make_separator())
 	var btn_row := HBoxContainer.new()
@@ -474,36 +368,31 @@ func _build_settings_layer() -> void:
 	btn_row.add_theme_constant_override("separation", 12)
 	var back_btn := Button.new()
 	back_btn.text = "返回"
-	back_btn.custom_minimum_size = Vector2(160, 44)
+	back_btn.custom_minimum_size = Vector2(150, 44)
 	back_btn.focus_mode = Control.FOCUS_ALL
-	back_btn.add_theme_font_size_override("font_size", 15)
-	var sb_back := StyleBoxFlat.new()
-	sb_back.bg_color = Color(0.93, 0.42, 0.3)
-	sb_back.set_corner_radius_all(10)
-	sb_back.content_margin_left = 16
-	sb_back.content_margin_right = 16
-	sb_back.content_margin_top = 8
-	sb_back.content_margin_bottom = 8
-	back_btn.add_theme_stylebox_override("normal", sb_back)
-	back_btn.add_theme_stylebox_override("hover", sb_back)
-	back_btn.add_theme_stylebox_override("pressed", sb_back)
-	back_btn.add_theme_stylebox_override("focus", sb_back)
+	UiStyle.apply_button(back_btn, true)
 	back_btn.pressed.connect(_on_settings_back)
 	btn_row.add_child(back_btn)
 	var reset_btn := Button.new()
 	reset_btn.text = "恢复默认"
-	reset_btn.custom_minimum_size = Vector2(120, 44)
+	reset_btn.custom_minimum_size = Vector2(130, 44)
 	reset_btn.focus_mode = Control.FOCUS_ALL
-	reset_btn.add_theme_font_size_override("font_size", 13)
+	reset_btn.add_theme_font_size_override("font_size", 14)
+	reset_btn.add_theme_color_override("font_color", UiStyle.INK)
+	reset_btn.add_theme_color_override("font_hover_color", UiStyle.WOOD)
 	var sb_reset := StyleBoxFlat.new()
-	sb_reset.bg_color = Color(1, 1, 1, 0.08)
-	sb_reset.set_corner_radius_all(10)
-	sb_reset.set_border_width_all(1)
-	sb_reset.border_color = Color(1, 1, 1, 0.15)
+	sb_reset.bg_color = Color(1, 1, 1, 0.35)
+	sb_reset.set_corner_radius_all(22)
+	sb_reset.set_border_width_all(2)
+	sb_reset.border_color = UiStyle.WOOD
+	sb_reset.content_margin_left = 14
+	sb_reset.content_margin_right = 14
 	reset_btn.add_theme_stylebox_override("normal", sb_reset)
-	reset_btn.add_theme_stylebox_override("hover", sb_reset)
+	var sb_reset_h: StyleBoxFlat = sb_reset.duplicate()
+	sb_reset_h.bg_color = Color(1, 1, 1, 0.55)
+	reset_btn.add_theme_stylebox_override("hover", sb_reset_h)
 	reset_btn.add_theme_stylebox_override("pressed", sb_reset)
-	reset_btn.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	reset_btn.add_theme_stylebox_override("focus", sb_reset_h)
 	reset_btn.pressed.connect(_on_reset_pressed)
 	btn_row.add_child(reset_btn)
 	vbox.add_child(btn_row)
@@ -517,8 +406,58 @@ func _build_settings_layer() -> void:
 func _make_separator() -> ColorRect:
 	var sep := ColorRect.new()
 	sep.custom_minimum_size = Vector2(0, 1)
-	sep.color = Color(1, 1, 1, 0.08)
+	sep.color = Color(UiStyle.WOOD.r, UiStyle.WOOD.g, UiStyle.WOOD.b, 0.28)
 	return sep
+
+
+func _make_settings_slider() -> HSlider:
+	var sl := HSlider.new()
+	sl.min_value = 0.0
+	sl.max_value = 1.0
+	sl.step = 0.05
+	sl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sl.focus_mode = Control.FOCUS_ALL
+	sl.custom_minimum_size = Vector2(0, 22)
+	return sl
+
+
+func _make_slider_row(title_text: String, slider: HSlider, value_label: Label, pct: int) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	var title := Label.new()
+	title.text = title_text
+	title.custom_minimum_size = Vector2(72, 0)
+	title.add_theme_font_size_override("font_size", 14)
+	title.add_theme_color_override("font_color", UiStyle.INK)
+	row.add_child(title)
+	row.add_child(slider)
+	value_label.text = "%d%%" % pct
+	value_label.custom_minimum_size = Vector2(42, 0)
+	value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	value_label.add_theme_font_size_override("font_size", 14)
+	value_label.add_theme_color_override("font_color", UiStyle.WOOD)
+	row.add_child(value_label)
+	return row
+
+
+func _make_check_row(title_text: String, box: CheckBox, box_text: String, pressed: bool, cb: Callable) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	var title := Label.new()
+	title.text = title_text
+	title.custom_minimum_size = Vector2(72, 0)
+	title.add_theme_font_size_override("font_size", 14)
+	title.add_theme_color_override("font_color", UiStyle.INK)
+	row.add_child(title)
+	box.text = box_text
+	box.button_pressed = pressed
+	box.focus_mode = Control.FOCUS_ALL
+	box.add_theme_color_override("font_color", UiStyle.INK)
+	box.add_theme_color_override("font_hover_color", UiStyle.WOOD)
+	box.add_theme_color_override("font_pressed_color", UiStyle.INK)
+	box.toggled.connect(cb)
+	row.add_child(box)
+	return row
 
 
 func _on_volume_changed(v: float) -> void:
