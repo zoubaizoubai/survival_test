@@ -1,0 +1,408 @@
+{
+  "weapons": {
+    "dagger": {
+      "name": "飞刀",
+      "color": {
+        "r": 0.65,
+        "g": 0.9,
+        "b": 1.0
+      },
+      "desc": "自动射向最近的敌人，可穿透",
+      "levels": [
+        {
+          "count": 1,
+          "dmg": 12.0,
+          "cd": 0.85,
+          "pierce": 1
+        },
+        {
+          "count": 2,
+          "dmg": 12.0,
+          "cd": 0.85,
+          "pierce": 1
+        },
+        {
+          "count": 2,
+          "dmg": 16.0,
+          "cd": 0.78,
+          "pierce": 2
+        },
+        {
+          "count": 3,
+          "dmg": 16.0,
+          "cd": 0.72,
+          "pierce": 2
+        },
+        {
+          "count": 3,
+          "dmg": 21.0,
+          "cd": 0.66,
+          "pierce": 3
+        },
+        {
+          "count": 4,
+          "dmg": 21.0,
+          "cd": 0.6,
+          "pierce": 3
+        },
+        {
+          "count": 5,
+          "dmg": 26.0,
+          "cd": 0.54,
+          "pierce": 4
+        },
+        {
+          "count": 6,
+          "dmg": 32.0,
+          "cd": 0.46,
+          "pierce": 5
+        }
+      ]
+    },
+    "orbit": {
+      "name": "环绕之刃",
+      "color": {
+        "r": 0.75,
+        "g": 0.85,
+        "b": 1.0
+      },
+      "desc": "利刃围绕你旋转，切碎靠近的敌人",
+      "levels": [
+        {
+          "orbs": 2,
+          "dmg": 10.0,
+          "radius": 70.0,
+          "rot": 3.2
+        },
+        {
+          "orbs": 3,
+          "dmg": 10.0,
+          "radius": 74.0,
+          "rot": 3.4
+        },
+        {
+          "orbs": 3,
+          "dmg": 14.0,
+          "radius": 78.0,
+          "rot": 3.6
+        },
+        {
+          "orbs": 4,
+          "dmg": 14.0,
+          "radius": 82.0,
+          "rot": 3.8
+        },
+        {
+          "orbs": 5,
+          "dmg": 18.0,
+          "radius": 86.0,
+          "rot": 4.0
+        },
+        {
+          "orbs": 5,
+          "dmg": 23.0,
+          "radius": 92.0,
+          "rot": 4.3
+        },
+        {
+          "orbs": 6,
+          "dmg": 28.0,
+          "radius": 98.0,
+          "rot": 4.6
+        },
+        {
+          "orbs": 7,
+          "dmg": 34.0,
+          "radius": 105.0,
+          "rot": 5.0
+        }
+      ]
+    },
+    "lightning": {
+      "name": "雷霆",
+      "color": {
+        "r": 0.8,
+        "g": 0.9,
+        "b": 1.0
+      },
+      "desc": "闪电随机劈向屏幕内的敌人并溅射",
+      "levels": [
+        {
+          "cd": 2.4,
+          "strikes": 1,
+          "dmg": 30.0,
+          "aoe": 70.0
+        },
+        {
+          "cd": 2.2,
+          "strikes": 2,
+          "dmg": 30.0,
+          "aoe": 70.0
+        },
+        {
+          "cd": 2.0,
+          "strikes": 2,
+          "dmg": 42.0,
+          "aoe": 80.0
+        },
+        {
+          "cd": 1.8,
+          "strikes": 3,
+          "dmg": 42.0,
+          "aoe": 80.0
+        },
+        {
+          "cd": 1.6,
+          "strikes": 3,
+          "dmg": 56.0,
+          "aoe": 90.0
+        },
+        {
+          "cd": 1.4,
+          "strikes": 4,
+          "dmg": 56.0,
+          "aoe": 90.0
+        },
+        {
+          "cd": 1.2,
+          "strikes": 5,
+          "dmg": 72.0,
+          "aoe": 100.0
+        },
+        {
+          "cd": 1.0,
+          "strikes": 6,
+          "dmg": 90.0,
+          "aoe": 110.0
+        }
+      ]
+    },
+    "aura": {
+      "name": "圣光领域",
+      "color": {
+        "r": 1.0,
+        "g": 0.88,
+        "b": 0.45
+      },
+      "desc": "神圣领域持续灼烧周围的敌人",
+      "levels": [
+        {
+          "radius": 90.0,
+          "dps": 12.0
+        },
+        {
+          "radius": 105.0,
+          "dps": 12.0
+        },
+        {
+          "radius": 105.0,
+          "dps": 18.0
+        },
+        {
+          "radius": 120.0,
+          "dps": 18.0
+        },
+        {
+          "radius": 135.0,
+          "dps": 26.0
+        },
+        {
+          "radius": 150.0,
+          "dps": 26.0
+        },
+        {
+          "radius": 165.0,
+          "dps": 36.0
+        },
+        {
+          "radius": 185.0,
+          "dps": 48.0
+        }
+      ]
+    }
+  },
+  "passives": {
+    "damage": {
+      "name": "力量祝福",
+      "desc": "所有伤害 +15%",
+      "max": 5,
+      "color": {
+        "r": 1.0,
+        "g": 0.45,
+        "b": 0.4
+      }
+    },
+    "haste": {
+      "name": "急速祝福",
+      "desc": "武器冷却 -8%",
+      "max": 5,
+      "color": {
+        "r": 1.0,
+        "g": 0.8,
+        "b": 0.35
+      }
+    },
+    "speed": {
+      "name": "疾风祝福",
+      "desc": "移动速度 +10%",
+      "max": 4,
+      "color": {
+        "r": 0.5,
+        "g": 0.95,
+        "b": 0.6
+      }
+    },
+    "hp": {
+      "name": "生命祝福",
+      "desc": "生命上限 +25 并回复 25",
+      "max": 5,
+      "color": {
+        "r": 1.0,
+        "g": 0.5,
+        "b": 0.65
+      }
+    },
+    "magnet": {
+      "name": "磁力祝福",
+      "desc": "拾取范围 +45%",
+      "max": 4,
+      "color": {
+        "r": 0.55,
+        "g": 0.75,
+        "b": 1.0
+      }
+    }
+  },
+  "enemies": {
+    "slime": {
+      "hp": 18.0,
+      "spd": 72.0,
+      "dmg": 8.0,
+      "r": 13.0,
+      "xp": 1,
+      "color": {
+        "r": 0.4,
+        "g": 0.85,
+        "b": 0.45
+      }
+    },
+    "bat": {
+      "hp": 11.0,
+      "spd": 135.0,
+      "dmg": 6.0,
+      "r": 10.0,
+      "xp": 1,
+      "color": {
+        "r": 0.8,
+        "g": 0.5,
+        "b": 0.95
+      }
+    },
+    "brute": {
+      "hp": 65.0,
+      "spd": 48.0,
+      "dmg": 16.0,
+      "r": 19.0,
+      "xp": 3,
+      "color": {
+        "r": 0.95,
+        "g": 0.55,
+        "b": 0.3
+      }
+    },
+    "elite": {
+      "hp": 420.0,
+      "spd": 62.0,
+      "dmg": 22.0,
+      "r": 27.0,
+      "xp": 0,
+      "color": {
+        "r": 1.0,
+        "g": 0.85,
+        "b": 0.3
+      }
+    },
+    "boss": {
+      "hp": 3200.0,
+      "spd": 44.0,
+      "dmg": 32.0,
+      "r": 46.0,
+      "xp": 0,
+      "color": {
+        "r": 0.9,
+        "g": 0.25,
+        "b": 0.3
+      }
+    }
+  },
+  "spawn": {
+    "arena": 2600.0,
+    "goal_time": 300.0,
+    "max_enemies": 170,
+    "spawn_radius": 820.0,
+    "spawn_interval": {
+      "base": 1.8,
+      "per_second": 0.006,
+      "min": 0.45,
+      "max": 1.8
+    },
+    "batch": {
+      "base": 1,
+      "per_45sec": 1
+    },
+    "elite_interval": 40.0,
+    "boss_times": [
+      150.0,
+      250.0
+    ],
+    "kind_thresholds": [
+      {
+        "elapsed_lt": 25.0,
+        "weights": {
+          "slime": 1.0
+        }
+      },
+      {
+        "elapsed_lt": 60.0,
+        "weights": {
+          "slime": 0.75,
+          "bat": 0.25
+        }
+      },
+      {
+        "elapsed_lt": 120.0,
+        "weights": {
+          "slime": 0.5,
+          "bat": 0.3,
+          "brute": 0.2
+        }
+      },
+      {
+        "elapsed_lt": 9999.0,
+        "weights": {
+          "slime": 0.4,
+          "bat": 0.3,
+          "brute": 0.3
+        }
+      }
+    ],
+    "enemy_scaling": {
+      "hp_per_sec": 0.011,
+      "speed_per_sec": 0.0005,
+      "speed_max": 1.2,
+      "speed_rand_min": 0.92,
+      "speed_rand_max": 1.08,
+      "dmg_per_sec": 0.0022
+    },
+    "player": {
+      "base_speed": 235.0,
+      "base_magnet": 95.0,
+      "base_hp": 100.0
+    }
+  },
+  "_meta": {
+    "version": "1.0",
+    "description": "幸存者数值表 - 集中管理武器/被动/敌人/生成曲线，启动时校验",
+    "updated": "2026-08-22"
+  }
+}

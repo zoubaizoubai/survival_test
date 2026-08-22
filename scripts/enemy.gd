@@ -2,13 +2,20 @@ extends Node2D
 
 signal died(enemy)
 
-const STATS := {
+const GameData := preload("res://scripts/game_data.gd")
+
+# 保留内置默认值作为回退，实际数值由 data/balance.json 提供
+const STATS_FALLBACK := {
 	"slime": {"hp": 18.0, "spd": 72.0, "dmg": 8.0, "r": 13.0, "xp": 1, "color": Color(0.4, 0.85, 0.45)},
 	"bat": {"hp": 11.0, "spd": 135.0, "dmg": 6.0, "r": 10.0, "xp": 1, "color": Color(0.8, 0.5, 0.95)},
 	"brute": {"hp": 65.0, "spd": 48.0, "dmg": 16.0, "r": 19.0, "xp": 3, "color": Color(0.95, 0.55, 0.3)},
 	"elite": {"hp": 420.0, "spd": 62.0, "dmg": 22.0, "r": 27.0, "xp": 0, "color": Color(1.0, 0.85, 0.3)},
 	"boss": {"hp": 3200.0, "spd": 44.0, "dmg": 32.0, "r": 46.0, "xp": 0, "color": Color(0.9, 0.25, 0.3)},
 }
+var STATS: Dictionary:
+	get:
+		GameData.ensure_loaded()
+		return GameData.enemies if not GameData.enemies.is_empty() else STATS_FALLBACK
 
 var game: Node2D
 var kind := "slime"
@@ -29,15 +36,23 @@ var wobble_seed := 0.0
 
 func _ready() -> void:
 	add_to_group("enemies")
-	var st: Dictionary = STATS[kind]
+	GameData.ensure_loaded()
+	var st: Dictionary = (GameData.enemies.get(kind, STATS_FALLBACK[kind]) as Dictionary) if GameData.enemies.has(kind) else (STATS[kind] as Dictionary)
+	var scaling: Dictionary = GameData.spawn.get("enemy_scaling", {}) as Dictionary
+	var hp_s: float = float(scaling.get("hp_per_sec", 0.011))
+	var spd_s: float = float(scaling.get("speed_per_sec", 0.0005))
+	var spd_m: float = float(scaling.get("speed_max", 1.2))
+	var rnd_min: float = float(scaling.get("speed_rand_min", 0.92))
+	var rnd_max: float = float(scaling.get("speed_rand_max", 1.08))
+	var dmg_s: float = float(scaling.get("dmg_per_sec", 0.0022))
 	var t: float = game.elapsed
-	max_hp = st["hp"] * (1.0 + t * 0.011)
+	max_hp = float(st["hp"]) * (1.0 + t * hp_s)
 	hp = max_hp
-	speed = st["spd"] * minf(1.0 + t * 0.0005, 1.2) * randf_range(0.92, 1.08)
-	dmg = st["dmg"] * (1.0 + t * 0.0022)
-	radius = st["r"]
-	xp_value = st["xp"]
-	base_color = st["color"]
+	speed = float(st["spd"]) * minf(1.0 + t * spd_s, spd_m) * randf_range(rnd_min, rnd_max)
+	dmg = float(st["dmg"]) * (1.0 + t * dmg_s)
+	radius = float(st["r"])
+	xp_value = int(st["xp"])
+	base_color = st["color"] as Color
 	wobble_seed = randf() * TAU
 
 

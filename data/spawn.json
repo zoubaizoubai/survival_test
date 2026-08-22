@@ -1,0 +1,65 @@
+{
+  "arena": 2600.0,
+  "goal_time": 300.0,
+  "max_enemies": 170,
+  "spawn_radius": 820.0,
+  "spawn_interval": {
+    "base": 1.8,
+    "per_second": 0.006,
+    "min": 0.45,
+    "max": 1.8
+  },
+  "batch": {
+    "base": 1,
+    "per_45sec": 1
+  },
+  "elite_interval": 40.0,
+  "boss_times": [
+    150.0,
+    250.0
+  ],
+  "kind_thresholds": [
+    {
+      "elapsed_lt": 25.0,
+      "weights": {
+        "slime": 1.0
+      }
+    },
+    {
+      "elapsed_lt": 60.0,
+      "weights": {
+        "slime": 0.75,
+        "bat": 0.25
+      }
+    },
+    {
+      "elapsed_lt": 120.0,
+      "weights": {
+        "slime": 0.5,
+        "bat": 0.3,
+        "brute": 0.2
+      }
+    },
+    {
+      "elapsed_lt": 9999.0,
+      "weights": {
+        "slime": 0.4,
+        "bat": 0.3,
+        "brute": 0.3
+      }
+    }
+  ],
+  "enemy_scaling": {
+    "hp_per_sec": 0.011,
+    "speed_per_sec": 0.0005,
+    "speed_max": 1.2,
+    "speed_rand_min": 0.92,
+    "speed_rand_max": 1.08,
+    "dmg_per_sec": 0.0022
+  },
+  "player": {
+    "base_speed": 235.0,
+    "base_magnet": 95.0,
+    "base_hp": 100.0
+  }
+}

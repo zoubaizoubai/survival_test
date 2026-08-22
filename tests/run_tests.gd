@@ -90,6 +90,7 @@ func _initialize() -> void:
 
 
 func _run_all() -> void:
+	await _test_data_driven()
 	await _test_home_load()
 	await _test_game_load()
 	await _test_pause_states()
@@ -675,6 +676,45 @@ func _run_perf_caps() -> Dictionary:
 	await process_frame
 	await process_frame
 	return result
+
+
+func _test_data_driven() -> void:
+	print("\n[SMOKE] 数据驱动校验")
+	var gd: GDScript = preload("res://scripts/game_data.gd")
+	gd.ensure_loaded()
+	var errs: Array = gd.get_errors()
+	var warns: Array = gd.get_warnings()
+	_assert(errs.is_empty(), "GameData 校验无错误", "错误: %s" % str(errs))
+	# 武器、被动、敌人数量保持一致
+	_assert(gd.weapons.size() == 4, "武器数量 4", "实际 %d" % gd.weapons.size())
+	_assert(gd.passives.size() == 5, "被动数量 5", "实际 %d" % gd.passives.size())
+	_assert(gd.enemies.size() == 5, "敌人种类 5", "实际 %d" % gd.enemies.size())
+	# ID 检查
+	for id in ["dagger", "orbit", "lightning", "aura"]:
+		_assert(gd.weapons.has(id), "武器包含 %s" % id, "缺失 %s" % id)
+		var w: Dictionary = gd.weapons[id] as Dictionary
+		_assert(w.has("levels") and (w["levels"] as Array).size() == 8, "武器 %s 等级 8" % id, "实际 %d" % ((w["levels"] as Array).size() if w.has("levels") else -1))
+	for id in ["damage", "haste", "speed", "hp", "magnet"]:
+		_assert(gd.passives.has(id), "被动包含 %s" % id, "缺失 %s" % id)
+	for id in ["slime", "bat", "brute", "elite", "boss"]:
+		_assert(gd.enemies.has(id), "敌人包含 %s" % id, "缺失 %s" % id)
+	# 生成曲线校验
+	_assert(gd.spawn.has("arena"), "spawn 包含 arena", "缺失")
+	_assert(gd.spawn.has("goal_time"), "spawn 包含 goal_time", "缺失")
+	_assert(gd.spawn.has("max_enemies"), "spawn 包含 max_enemies", "缺失")
+	_assert(int(gd.spawn.get("max_enemies", 0)) == 170, "max_enemies 170", "实际 %s" % str(gd.spawn.get("max_enemies")))
+	_assert(gd.spawn.has("kind_thresholds"), "spawn 包含 kind_thresholds", "缺失")
+	# 数值一致性抽检
+	var dagger_lv1: Dictionary = (gd.weapons["dagger"]["levels"] as Array)[0] as Dictionary
+	_assert(int(dagger_lv1["count"]) == 1 and is_equal_approx(float(dagger_lv1["dmg"]), 12.0), "dagger Lv1 数值一致", "实际 %s" % str(dagger_lv1))
+	var slime: Dictionary = gd.enemies["slime"] as Dictionary
+	_assert(is_equal_approx(float(slime["hp"]), 18.0) and is_equal_approx(float(slime["r"]), 13.0), "slime 数值一致", "实际 %s" % str(slime))
+	# 颜色类型校验
+	_assert(gd.weapons["dagger"]["color"] is Color, "武器颜色为 Color", "类型 %s" % str(typeof(gd.weapons["dagger"]["color"])))
+	_assert(gd.enemies["boss"]["color"] is Color, "敌人颜色为 Color", "类型")
+	print("  GameData 已加载：weapons=%d passives=%d enemies=%d spawn_keys=%s" % [gd.weapons.size(), gd.passives.size(), gd.enemies.size(), str(gd.spawn.keys())])
+	if not warns.is_empty():
+		print("  [WARN] %s" % str(warns))
 
 
 func _test_lightning_range() -> void:

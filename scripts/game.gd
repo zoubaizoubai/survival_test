@@ -11,77 +11,27 @@ const MenusScript := preload("res://scripts/menus.gd")
 const JoystickScript := preload("res://scripts/joystick.gd")
 const SfxScript := preload("res://scripts/sfx.gd")
 
-const ARENA := 2600.0
-const GOAL_TIME := 300.0
-const MAX_ENEMIES := 170
-const SPAWN_R := 820.0
+const GameData := preload("res://scripts/game_data.gd")
 
-const WEAPONS := {
-	"dagger": {
-		"name": "飞刀", "color": Color(0.65, 0.9, 1.0),
-		"desc": "自动射向最近的敌人，可穿透",
-		"levels": [
-			{"count": 1, "dmg": 12.0, "cd": 0.85, "pierce": 1},
-			{"count": 2, "dmg": 12.0, "cd": 0.85, "pierce": 1},
-			{"count": 2, "dmg": 16.0, "cd": 0.78, "pierce": 2},
-			{"count": 3, "dmg": 16.0, "cd": 0.72, "pierce": 2},
-			{"count": 3, "dmg": 21.0, "cd": 0.66, "pierce": 3},
-			{"count": 4, "dmg": 21.0, "cd": 0.60, "pierce": 3},
-			{"count": 5, "dmg": 26.0, "cd": 0.54, "pierce": 4},
-			{"count": 6, "dmg": 32.0, "cd": 0.46, "pierce": 5},
-		],
-	},
-	"orbit": {
-		"name": "环绕之刃", "color": Color(0.75, 0.85, 1.0),
-		"desc": "利刃围绕你旋转，切碎靠近的敌人",
-		"levels": [
-			{"orbs": 2, "dmg": 10.0, "radius": 70.0, "rot": 3.2},
-			{"orbs": 3, "dmg": 10.0, "radius": 74.0, "rot": 3.4},
-			{"orbs": 3, "dmg": 14.0, "radius": 78.0, "rot": 3.6},
-			{"orbs": 4, "dmg": 14.0, "radius": 82.0, "rot": 3.8},
-			{"orbs": 5, "dmg": 18.0, "radius": 86.0, "rot": 4.0},
-			{"orbs": 5, "dmg": 23.0, "radius": 92.0, "rot": 4.3},
-			{"orbs": 6, "dmg": 28.0, "radius": 98.0, "rot": 4.6},
-			{"orbs": 7, "dmg": 34.0, "radius": 105.0, "rot": 5.0},
-		],
-	},
-	"lightning": {
-		"name": "雷霆", "color": Color(0.8, 0.9, 1.0),
-		"desc": "闪电随机劈向屏幕内的敌人并溅射",
-		"levels": [
-			{"cd": 2.4, "strikes": 1, "dmg": 30.0, "aoe": 70.0},
-			{"cd": 2.2, "strikes": 2, "dmg": 30.0, "aoe": 70.0},
-			{"cd": 2.0, "strikes": 2, "dmg": 42.0, "aoe": 80.0},
-			{"cd": 1.8, "strikes": 3, "dmg": 42.0, "aoe": 80.0},
-			{"cd": 1.6, "strikes": 3, "dmg": 56.0, "aoe": 90.0},
-			{"cd": 1.4, "strikes": 4, "dmg": 56.0, "aoe": 90.0},
-			{"cd": 1.2, "strikes": 5, "dmg": 72.0, "aoe": 100.0},
-			{"cd": 1.0, "strikes": 6, "dmg": 90.0, "aoe": 110.0},
-		],
-	},
-	"aura": {
-		"name": "圣光领域", "color": Color(1.0, 0.88, 0.45),
-		"desc": "神圣领域持续灼烧周围的敌人",
-		"levels": [
-			{"radius": 90.0, "dps": 12.0},
-			{"radius": 105.0, "dps": 12.0},
-			{"radius": 105.0, "dps": 18.0},
-			{"radius": 120.0, "dps": 18.0},
-			{"radius": 135.0, "dps": 26.0},
-			{"radius": 150.0, "dps": 26.0},
-			{"radius": 165.0, "dps": 36.0},
-			{"radius": 185.0, "dps": 48.0},
-		],
-	},
-}
-
-const PASSIVES := {
-	"damage": {"name": "力量祝福", "desc": "所有伤害 +15%", "max": 5, "color": Color(1.0, 0.45, 0.4)},
-	"haste": {"name": "急速祝福", "desc": "武器冷却 -8%", "max": 5, "color": Color(1.0, 0.8, 0.35)},
-	"speed": {"name": "疾风祝福", "desc": "移动速度 +10%", "max": 4, "color": Color(0.5, 0.95, 0.6)},
-	"hp": {"name": "生命祝福", "desc": "生命上限 +25 并回复 25", "max": 5, "color": Color(1.0, 0.5, 0.65)},
-	"magnet": {"name": "磁力祝福", "desc": "拾取范围 +45%", "max": 4, "color": Color(0.55, 0.75, 1.0)},
-}
+# 数值由 data/balance.json 集中管理，此处为兼容层：通过 GameData 暴露，保持原有字段名可通过 g.get() 访问
+var ARENA: float:
+	get: return GameData.arena
+	set(v): GameData.arena = v
+var GOAL_TIME: float:
+	get: return GameData.goal_time
+	set(v): GameData.goal_time = v
+var MAX_ENEMIES: int:
+	get: return GameData.max_enemies
+	set(v): GameData.max_enemies = v
+var SPAWN_R: float:
+	get: return GameData.spawn_radius
+	set(v): GameData.spawn_radius = v
+var WEAPONS: Dictionary:
+	get: return GameData.weapons
+	set(v): GameData.weapons = v
+var PASSIVES: Dictionary:
+	get: return GameData.passives
+	set(v): GameData.passives = v
 
 var player: Node2D
 var cam: Camera2D
@@ -108,6 +58,16 @@ var shake := 0.0
 
 
 func _ready() -> void:
+	GameData.ensure_loaded()
+	var _gd_errs: Array = GameData.get_errors()
+	for e in _gd_errs:
+		push_error("[GameData] %s" % str(e))
+	var _gd_warns: Array = GameData.get_warnings()
+	for w in _gd_warns:
+		push_warning("[GameData] %s" % str(w))
+	# 同步生成器初始值（若数据驱动覆盖）
+	if GameData.spawn.has("elite_interval"):
+		elite_t = float(GameData.spawn["elite_interval"])
 	sfx = SfxScript.new()
 	add_child(sfx)
 	world = Node2D.new()
@@ -177,16 +137,24 @@ func _process(delta: float) -> void:
 func _update_spawner(delta: float) -> void:
 	spawn_t -= delta
 	if spawn_t <= 0.0:
-		spawn_t = clampf(1.8 - elapsed * 0.006, 0.45, 1.8)
-		var batch := 1 + int(elapsed / 45.0)
+		var si: Dictionary = GameData.spawn.get("spawn_interval", {}) as Dictionary
+		var base: float = float(si.get("base", 1.8))
+		var per: float = float(si.get("per_second", 0.006))
+		var mn: float = float(si.get("min", 0.45))
+		var mx: float = float(si.get("max", 1.8))
+		spawn_t = clampf(base - elapsed * per, mn, mx)
+		var batch_cfg: Dictionary = GameData.spawn.get("batch", {}) as Dictionary
+		var batch_base: int = int(batch_cfg.get("base", 1))
+		var per_45: int = int(batch_cfg.get("per_45sec", 1))
+		var batch := batch_base + int(elapsed / 45.0) * per_45
 		for i in batch:
 			_spawn_one()
 	elite_t -= delta
 	if elite_t <= 0.0:
-		elite_t = 40.0
+		elite_t = float(GameData.spawn.get("elite_interval", 40.0))
 		_spawn_at("elite", _spawn_pos())
-	var boss_times := [150.0, 250.0]
-	if boss_idx < boss_times.size() and elapsed >= boss_times[boss_idx]:
+	var boss_times: Array = GameData.spawn.get("boss_times", [150.0, 250.0]) as Array
+	if boss_idx < boss_times.size() and elapsed >= float(boss_times[boss_idx]):
 		boss_idx += 1
 		_spawn_at("boss", _spawn_pos())
 
@@ -206,23 +174,48 @@ func _spawn_pos() -> Vector2:
 
 
 func _pick_kind() -> String:
+	# 数据驱动：读取 spawn.kind_thresholds，按 elapsed 匹配首个阈值后按权重随机
+	var thresholds: Array = GameData.spawn.get("kind_thresholds", []) as Array
+	if thresholds.is_empty():
+		# 回退硬编码（保证无数据时行为不变）
+		var roll2 := randf()
+		if elapsed < 25.0:
+			return "slime"
+		elif elapsed < 60.0:
+			return "slime" if roll2 < 0.75 else "bat"
+		elif elapsed < 120.0:
+			if roll2 < 0.5:
+				return "slime"
+			elif roll2 < 0.8:
+				return "bat"
+			return "brute"
+		else:
+			if roll2 < 0.4:
+				return "slime"
+			elif roll2 < 0.7:
+				return "bat"
+			return "brute"
+	var weights: Dictionary = {}
+	for entry in thresholds:
+		if not entry is Dictionary:
+			continue
+		var d: Dictionary = entry as Dictionary
+		var lt: float = float(d.get("elapsed_lt", 9999.0))
+		if elapsed < lt:
+			weights = d.get("weights", {}) as Dictionary
+			break
+	if weights.is_empty():
+		# 取最后一条
+		var last: Dictionary = thresholds[thresholds.size() - 1] as Dictionary
+		weights = last.get("weights", {"slime": 1.0}) as Dictionary
 	var roll := randf()
-	if elapsed < 25.0:
-		return "slime"
-	elif elapsed < 60.0:
-		return "slime" if roll < 0.75 else "bat"
-	elif elapsed < 120.0:
-		if roll < 0.5:
-			return "slime"
-		elif roll < 0.8:
-			return "bat"
-		return "brute"
-	else:
-		if roll < 0.4:
-			return "slime"
-		elif roll < 0.7:
-			return "bat"
-		return "brute"
+	var acc: float = 0.0
+	for kind in weights.keys():
+		acc += float(weights[kind])
+		if roll < acc:
+			return str(kind)
+	# 保底：返回首个
+	return str(weights.keys()[0]) if not weights.is_empty() else "slime"
 
 
 func _spawn_one() -> void:
