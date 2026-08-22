@@ -33,7 +33,7 @@ func _ready() -> void:
 	_cards_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
 	_cards_scroll.mouse_filter = Control.MOUSE_FILTER_PASS
 	# 限制最大宽度，避免超宽裁切，允许在窄屏滚动
-	_cards_scroll.custom_minimum_size = Vector2(0, 200)
+	_cards_scroll.custom_minimum_size = Vector2(0, 280)
 	cards_box = HBoxContainer.new()
 	cards_box.name = "CardsBox"
 	cards_box.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -110,7 +110,7 @@ func _update_layout() -> void:
 	var is_short: bool = vp.y < 650
 	# 限制滚动区最大宽度为视口 92%，避免裁切
 	if _cards_scroll:
-		_cards_scroll.custom_minimum_size = Vector2(minf(vp.x - 40.0, 720), 200)
+		_cards_scroll.custom_minimum_size = Vector2(minf(vp.x - 40.0, 760), 280)
 		_cards_scroll.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	# 调整升级卡片尺寸与间距以适配不同比例
 	if cards_box:
@@ -118,11 +118,11 @@ func _update_layout() -> void:
 		for child in cards_box.get_children():
 			if child is PanelContainer:
 				if is_short:
-					child.custom_minimum_size = Vector2(196, 200)
+					child.custom_minimum_size = Vector2(210, 240)
 				elif is_wide:
-					child.custom_minimum_size = Vector2(214, 220)
+					child.custom_minimum_size = Vector2(220, 250)
 				else:
-					child.custom_minimum_size = Vector2(228, 236)
+					child.custom_minimum_size = Vector2(230, 260)
 	# 调整字体在窄高屏下的大小
 	if end_title:
 		end_title.add_theme_font_size_override("font_size", 36 if is_short else 44)
@@ -350,8 +350,7 @@ func _describe_next(c: Dictionary) -> String:
 			return _format_levels(cur, nxt)
 		"passive":
 			var p: Dictionary = game.PASSIVES[c["id"]]
-			var cur2: int = int(game.player.passives.get(c["id"], 0))
-			return "Lv%d → Lv%d · %s" % [cur2, cur2 + 1, p["desc"]]
+			return str(p.get("desc", ""))
 		"evolution":
 			var w3: Dictionary = game.WEAPONS[c["id"]]
 			var pas: String = str(c.get("passive", ""))
@@ -364,54 +363,76 @@ func _describe_next(c: Dictionary) -> String:
 
 
 func _format_levels(cur: Dictionary, nxt: Dictionary) -> String:
+	var names := {
+		"count": "数量", "orbs": "环刃", "pierce": "穿透", "strikes": "落雷",
+		"dmg": "伤害", "cd": "冷却", "radius": "范围", "rot": "转速",
+		"aoe": "范围", "dps": "每秒", "speed": "弹速", "slow": "减速",
+		"slow_time": "减速时间", "return_time": "回程",
+	}
 	var parts: Array = []
-	for k in ["count", "orbs", "pierce", "strikes", "dmg", "cd", "radius", "rot", "aoe", "dps", "speed", "slow", "slow_time", "return_time"]:
+	for k in names.keys():
 		if cur.has(k) or nxt.has(k):
 			var cv: Variant = cur.get(k, null)
 			var nv: Variant = nxt.get(k, null)
+			var label: String = str(names[k])
 			if cv != null and nv != null and str(cv) != str(nv):
-				parts.append("%s %.1f→%.1f" % [k, float(cv), float(nv)] if cv is float or nv is float else "%s %s→%s" % [k, str(cv), str(nv)])
+				parts.append("%s %s→%s" % [label, _fmt_stat(cv), _fmt_stat(nv)])
 			elif nv != null and cur.get(k, null) == null:
-				parts.append("%s %s" % [k, str(nv)])
+				parts.append("%s %s" % [label, _fmt_stat(nv)])
 	if parts.is_empty():
-		# 至少显示一个关键数值
 		for k in nxt.keys():
-			if k in ["count", "dmg", "cd", "pierce", "radius", "orbs", "aoe"]:
-				parts.append("%s %s" % [k, str(nxt[k])])
+			if names.has(k):
+				parts.append("%s %s" % [str(names[k]), _fmt_stat(nxt[k])])
 				break
-	return " · ".join(parts) if not parts.is_empty() else nxt.values()[0] if not nxt.is_empty() else ""
+	return " · ".join(parts) if not parts.is_empty() else ""
+
+
+func _fmt_stat(v: Variant) -> String:
+	if v is float:
+		var f: float = float(v)
+		if is_equal_approx(f, roundf(f)):
+			return str(int(roundf(f)))
+		return "%.1f" % f
+	return str(v)
 
 
 func _card_info(c: Dictionary) -> Dictionary:
 	match c["kind"]:
 		"weapon_new":
 			var w: Dictionary = game.WEAPONS[c["id"]]
-			return {"title": w["name"], "tag": "新武器", "desc": w["desc"] + "\n" + _describe_next(c), "color": w["color"]}
+			return {"title": w["name"], "tag": "新武器", "desc": str(w["desc"]), "color": w["color"]}
 		"weapon_up":
 			var w2: Dictionary = game.WEAPONS[c["id"]]
 			var lv: int = int(game.player.weapons[c["id"]]["lv"])
-			return {"title": w2["name"], "tag": "升级 Lv%d → Lv%d" % [lv, lv + 1], "desc": w2["desc"] + "\n" + _describe_next(c), "color": w2["color"]}
+			return {"title": w2["name"], "tag": "升级 Lv%d → Lv%d" % [lv, lv + 1], "desc": str(w2["desc"]) + "\n" + _describe_next(c), "color": w2["color"]}
 		"passive":
 			var p: Dictionary = game.PASSIVES[c["id"]]
 			var cur: int = int(game.player.passives.get(c["id"], 0))
-			return {"title": p["name"], "tag": "祝福 %d/%d" % [cur + 1, p["max"]], "desc": p["desc"] + "\n" + _describe_next(c), "color": p["color"]}
+			return {"title": p["name"], "tag": "祝福  %d/%d" % [cur + 1, p["max"]], "desc": str(p["desc"]), "color": p["color"]}
 		"evolution":
 			var w3: Dictionary = game.WEAPONS[c["id"]]
 			var res: String = str(c.get("result", ""))
 			var rinfo: Dictionary = game.WEAPONS[res] if game.WEAPONS.has(res) else w3
-			return {"title": str(rinfo.get("name", res)), "tag": "进化 · " + str(c.get("evo_name", "进化")), "desc": str(rinfo.get("desc", "")) + "\n" + _describe_next(c), "color": rinfo.get("color", w3["color"])}
+			return {"title": str(rinfo.get("name", res)), "tag": "进化 · " + str(c.get("evo_name", "进化")), "desc": str(rinfo.get("desc", "")), "color": rinfo.get("color", w3["color"])}
 		_:
-			return {"title": "急救包", "tag": "回复", "desc": "立即回复 40 点生命值\n" + _describe_next(c), "color": Color(0.4, 0.95, 0.6)}
+			return {"title": "急救包", "tag": "回复", "desc": "立即回复 40 点生命值", "color": Color(0.4, 0.95, 0.6)}
 
 
 func _make_card(card: Dictionary) -> PanelContainer:
 	var info := _card_info(card)
 	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(228, 236)
+	panel.custom_minimum_size = Vector2(230, 260)
 	panel.focus_mode = Control.FOCUS_ALL
-	var sb: StyleBox = UiStyle.texture_box("res://assets/ui/panel.png", 52.0, 18.0)
-	if sb is StyleBoxTexture:
-		(sb as StyleBoxTexture).modulate_color = Color(1, 1, 1)
+	panel.clip_contents = true
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(UiStyle.CREAM.r, UiStyle.CREAM.g, UiStyle.CREAM.b, 0.97)
+	sb.set_corner_radius_all(18)
+	sb.set_border_width_all(5)
+	sb.border_color = UiStyle.WOOD
+	sb.content_margin_left = 16
+	sb.content_margin_right = 16
+	sb.content_margin_top = 14
+	sb.content_margin_bottom = 14
 	panel.add_theme_stylebox_override("panel", sb)
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 6)
@@ -422,7 +443,7 @@ func _make_card(card: Dictionary) -> PanelContainer:
 		icon_id = "hp"
 	var ic := TextureRect.new()
 	ic.texture = SpriteLibrary.icon(icon_id)
-	ic.custom_minimum_size = Vector2(48, 48)
+	ic.custom_minimum_size = Vector2(40, 40)
 	ic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	ic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	ic.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -447,18 +468,12 @@ func _make_card(card: Dictionary) -> PanelContainer:
 	desc.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	desc.clip_text = true
-	desc.add_theme_font_size_override("font_size", 12)
-	desc.add_theme_color_override("font_color", Color(UiStyle.INK.r, UiStyle.INK.g, UiStyle.INK.b, 0.72))
+	desc.max_lines_visible = 4
+	desc.add_theme_font_size_override("font_size", 13)
+	desc.add_theme_color_override("font_color", Color(UiStyle.INK.r, UiStyle.INK.g, UiStyle.INK.b, 0.78))
 	desc.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	desc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	v.add_child(desc)
-	var hint := Label.new()
-	hint.text = "点击选择"
-	hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hint.add_theme_font_size_override("font_size", 11)
-	hint.add_theme_color_override("font_color", Color(UiStyle.WOOD.r, UiStyle.WOOD.g, UiStyle.WOOD.b, 0.7))
-	v.add_child(hint)
 	# 焦点样式
 	panel.focus_entered.connect(func(): panel.modulate = Color(1.15, 1.15, 1.15))
 	panel.focus_exited.connect(func(): panel.modulate = Color.WHITE)
