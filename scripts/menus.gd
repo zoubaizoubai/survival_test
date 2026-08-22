@@ -29,10 +29,13 @@ func _ready() -> void:
 	_cards_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_cards_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
 	_cards_scroll.mouse_filter = Control.MOUSE_FILTER_PASS
+	# 限制最大宽度，避免超宽裁切，允许在窄屏滚动
+	_cards_scroll.custom_minimum_size = Vector2(0, 200)
 	cards_box = HBoxContainer.new()
 	cards_box.name = "CardsBox"
 	cards_box.alignment = BoxContainer.ALIGNMENT_CENTER
-	cards_box.add_theme_constant_override("separation", 20)
+	cards_box.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	cards_box.add_theme_constant_override("separation", 16)
 	_cards_scroll.add_child(cards_box)
 	uv.add_child(_cards_scroll)
 	upgrade_layer = _make_dim_layer(uv)
@@ -102,17 +105,21 @@ func _update_layout() -> void:
 	var vp: Vector2 = get_viewport_rect().size
 	var is_wide: bool = vp.x / maxf(vp.y, 1.0) > 1.95
 	var is_short: bool = vp.y < 650
+	# 限制滚动区最大宽度为视口 92%，避免裁切
+	if _cards_scroll:
+		_cards_scroll.custom_minimum_size = Vector2(minf(vp.x - 40.0, 720), 200)
+		_cards_scroll.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	# 调整升级卡片尺寸与间距以适配不同比例
 	if cards_box:
-		cards_box.add_theme_constant_override("separation", 12 if is_short or is_wide else 20)
+		cards_box.add_theme_constant_override("separation", 12 if is_short or is_wide else 16)
 		for child in cards_box.get_children():
 			if child is PanelContainer:
 				if is_short:
-					child.custom_minimum_size = Vector2(200, 170)
+					child.custom_minimum_size = Vector2(180, 150)
 				elif is_wide:
-					child.custom_minimum_size = Vector2(220, 180)
+					child.custom_minimum_size = Vector2(200, 170)
 				else:
-					child.custom_minimum_size = Vector2(250, 210)
+					child.custom_minimum_size = Vector2(210, 190)
 	# 调整字体在窄高屏下的大小
 	if end_title:
 		end_title.add_theme_font_size_override("font_size", 36 if is_short else 44)
@@ -376,7 +383,7 @@ func _describe_next(c: Dictionary) -> String:
 
 func _format_levels(cur: Dictionary, nxt: Dictionary) -> String:
 	var parts: Array = []
-	for k in ["count", "orbs", "pierce", "orbs", "strikes", "dmg", "cd", "radius", "rot", "aoe", "dps", "speed", "slow", "slow_time", "return_time"]:
+	for k in ["count", "orbs", "pierce", "strikes", "dmg", "cd", "radius", "rot", "aoe", "dps", "speed", "slow", "slow_time", "return_time"]:
 		if cur.has(k) or nxt.has(k):
 			var cv: Variant = cur.get(k, null)
 			var nv: Variant = nxt.get(k, null)
@@ -418,7 +425,7 @@ func _card_info(c: Dictionary) -> Dictionary:
 func _make_card(card: Dictionary) -> PanelContainer:
 	var info := _card_info(card)
 	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(250, 230)
+	panel.custom_minimum_size = Vector2(210, 190)
 	panel.focus_mode = Control.FOCUS_ALL
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = Color(0.09, 0.095, 0.13, 0.97)
@@ -451,9 +458,12 @@ func _make_card(card: Dictionary) -> PanelContainer:
 	desc.text = info["desc"]
 	desc.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	desc.add_theme_font_size_override("font_size", 13)
+	desc.clip_text = true
+	desc.add_theme_font_size_override("font_size", 12)
 	desc.add_theme_color_override("font_color", Color(1, 1, 1, 0.65))
 	desc.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	desc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	desc.custom_minimum_size = Vector2(0, 0)
 	v.add_child(desc)
 	var hint := Label.new()
 	hint.text = "点击或按 确认 选择"
