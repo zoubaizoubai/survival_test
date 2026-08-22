@@ -57,6 +57,13 @@ var elite_t := 45.0
 var boss_idx := 0
 var shake := 0.0
 
+# --- 性能优化：对象池与注册表 ---
+var _proj_pool: Array = []
+var _pickup_pool: Array = []
+var _float_pool: Array = []
+var _burst_pool: Array = []
+var _lightning_pool: Array = []
+
 
 func _ready() -> void:
 	GameData.ensure_loaded()
@@ -66,7 +73,6 @@ func _ready() -> void:
 	var _gd_warns: Array = GameData.get_warnings()
 	for w in _gd_warns:
 		push_warning("[GameData] %s" % str(w))
-	# 同步生成器初始值（若数据驱动覆盖）
 	if GameData.spawn.has("elite_interval"):
 		elite_t = float(GameData.spawn["elite_interval"])
 	sfx = SfxScript.new()
@@ -119,6 +125,29 @@ func _ready() -> void:
 	player.leveled_up.connect(_on_level_up)
 
 
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PREDELETE:
+		for n in _proj_pool:
+			if is_instance_valid(n):
+				n.queue_free()
+		_proj_pool.clear()
+		for n in _pickup_pool:
+			if is_instance_valid(n):
+				n.queue_free()
+		_pickup_pool.clear()
+		for n in _float_pool:
+			if is_instance_valid(n):
+				n.queue_free()
+		_float_pool.clear()
+		for n in _burst_pool:
+			if is_instance_valid(n):
+				n.queue_free()
+		_burst_pool.clear()
+		for n in _lightning_pool:
+			if is_instance_valid(n):
+				n.queue_free()
+		_lightning_pool.clear()
+
 func _process(delta: float) -> void:
 	if not running or ended:
 		return
@@ -163,7 +192,15 @@ func _update_spawner(delta: float) -> void:
 
 
 func _live_count() -> int:
-	return get_tree().get_nodes_in_group("enemies").size()
+	# 直接子节点计数，避免 group 哈希查找
+	return enemies_node.get_child_count() if enemies_node else 0
+
+func get_enemies() -> Array:
+	# 注册表：直接返回子节点数组，避免 get_nodes_in_group
+	return enemies_node.get_children() if enemies_node else []
+
+func get_pickups() -> Array:
+	return pickups_node.get_children() if pickups_node else []
 
 
 func _spawn_pos() -> Vector2:
@@ -243,28 +280,92 @@ func hurt_enemy(e: Node2D, dmg: float, kdir: Vector2 = Vector2.ZERO) -> void:
 
 
 func spawn_damage_text(pos: Vector2, text_value: String, color_value: Color = Color(1, 1, 1)) -> void:
-	if get_tree().get_nodes_in_group("float_text").size() > 60:
-		return
-	var t := Fx.FloatText.new()
+	# 限流：基于 fx 子节点中 FloatText 数量，避免 group 查询
+	var float_count: int = 0
+	for child in fx_node.get_children():
+		if child is Fx.FloatText:
+			float_count += 1
+			if float_count > 60:
+				return
+	var t: Fx.FloatText
+	if _float_pool.size() > 0:
+		t = _float_pool.pop_back() as Fx.FloatText
+		t.visible = true
+	else:
+		t = Fx.FloatText.new()
+	t.game = self
 	t.position = pos + Vector2(randf_range(-10, 10), -16) - Vector2(60, 10)
 	t.size = Vector2(120, 20)
 	t.text_value = text_value
 	t.color_value = color_value
+	t.text = text_value
+	t.add_theme_color_override("font_color", color_value)
+	t.life = 0.7
+	t.vy = -46.0
+	t.modulate.a = 1.0
+	if t.get_parent():
+		t.get_parent().remove_child(t)
 	fx_node.add_child(t)
+
+func _recycle_float_text(t: Node) -> void:
+	if t.get_parent():
+		t.get_parent().remove_child(t)
+	t.visible = false
+	_float_pool.append(t)
 
 
 func spawn_burst(pos: Vector2, col: Color, r: float = 18.0) -> void:
-	var b := Fx.Burst.new()
+	var b: Fx.Burst
+	if _burst_pool.size() > 0:
+		b = _burst_pool.pop_back() as Fx.Burst
+		b.visible = true
+	else:
+		b = Fx.Burst.new()
+	b.game = self
 	b.position = pos
 	b.color_v = col
 	b.max_r = maxf(r * 1.6, 22.0)
+	b.life = 0.35
+	b.t = 0.0
+	if b.get_parent():
+		b.get_parent().remove_child(b)
 	fx_node.add_child(b)
+
+func _recycle_burst(b: Node) -> void:
+	if b.get_parent():
+		b.get_parent().remove_child(b)
+	b.visible = false
+	_burst_pool.append(b)
 
 
 func fx_lightning(pos: Vector2) -> void:
-	var l := Fx.Lightning.new()
+	var l: Fx.Lightning
+	if _lightning_pool.size() > 0:
+		l = _lightning_pool.pop_back() as Fx.Lightning
+		l.visible = true
+	else:
+		l = Fx.Lightning.new()
+	l.game = self
 	l.target = pos
+	l.life = 0.22
+	l.t = 0.0
+	l.pts.clear()
+	var start := pos + Vector2(randf_range(-60, 60), -430)
+	l.pts.append(start)
+	var segs: int = 7
+	for i in range(1, segs):
+		var k: float = float(i) / float(segs)
+		l.pts.append(start.lerp(pos, k) + Vector2(randf_range(-26, 26), 0))
+	l.pts.append(pos)
+	if l.get_parent():
+		l.get_parent().remove_child(l)
 	fx_node.add_child(l)
+
+func _recycle_lightning(l: Node) -> void:
+	if l.get_parent():
+		l.get_parent().remove_child(l)
+	l.visible = false
+	_lightning_pool.append(l)
 
 
 func _on_enemy_died(e: Node2D) -> void:
@@ -291,13 +392,56 @@ func _drop_gems(pos: Vector2, count: int, value: int) -> void:
 
 
 func _spawn_pickup(kind: String, pos: Vector2, value: int) -> void:
-	if kind == "gem" and get_tree().get_nodes_in_group("pickup").size() > 350:
+	if kind == "gem" and pickups_node.get_child_count() > 350:
 		return
-	var g := PickupScript.new()
-	g.kind = kind
-	g.value = value
+	var g: Node = null
+	if _pickup_pool.size() > 0:
+		g = _pickup_pool.pop_back() as Node
+		g.visible = true
+	else:
+		g = PickupScript.new()
+	g.set("game", self)
+	g.set("kind", kind)
+	g.set("value", value)
+	g.set("magnet", false)
+	g.set("vel", Vector2.ZERO)
+	g.set("collected", false)
+	g.set("t", randf() * TAU)
 	g.position = pos
+	if g.get_parent():
+		g.get_parent().remove_child(g)
 	pickups_node.add_child(g)
+
+func _recycle_pickup(p: Node) -> void:
+	if p.get_parent():
+		p.get_parent().remove_child(p)
+	p.visible = false
+	_pickup_pool.append(p)
+
+func spawn_projectile(dir: Vector2, dmg: float, pierce: int, pos: Vector2) -> void:
+	var p: Node
+	if _proj_pool.size() > 0:
+		p = _proj_pool.pop_back()
+		p.visible = true
+	else:
+		p = ProjectileScript.new()
+	p.set("game", self)
+	p.set("dir", dir)
+	p.set("dmg", dmg)
+	p.set("pierce", pierce)
+	p.set("life", 1.5)
+	(p.get("hit_ids") as Dictionary).clear()
+	p.position = pos
+	p.rotation = dir.angle()
+	if p.get_parent():
+		p.get_parent().remove_child(p)
+	projectiles_node.add_child(p)
+
+func _recycle_projectile(p: Node) -> void:
+	if p.get_parent():
+		p.get_parent().remove_child(p)
+	p.visible = false
+	_proj_pool.append(p)
 
 
 func _on_level_up() -> void:

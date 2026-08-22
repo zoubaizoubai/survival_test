@@ -1,5 +1,6 @@
 extends Node2D
 
+var game: Node2D
 var kind := "gem"
 var value := 1
 var magnet := false
@@ -11,20 +12,24 @@ var collected := false
 func _ready() -> void:
 	add_to_group("pickup")
 	t = randf() * TAU
+	# 若由对象池复用，可能已在组中，避免重复
+	if not is_in_group("pickup"):
+		add_to_group("pickup")
 
 
 func _process(delta: float) -> void:
 	t += delta
-	var pl: Node2D = get_tree().get_first_node_in_group("player")
+	var pl: Node2D = game.player if game else get_tree().get_first_node_in_group("player")
 	if pl == null or pl.dead:
 		return
-	var d := global_position.distance_to(pl.global_position)
-	if d < pl.magnet_radius():
+	var d2: float = global_position.distance_squared_to(pl.global_position)
+	var mag: float = pl.magnet_radius()
+	if d2 < mag * mag:
 		magnet = true
 	if magnet:
 		vel = vel.move_toward((pl.global_position - global_position).normalized() * 520.0, 2400.0 * delta)
 		position += vel * delta
-		if d < 18.0:
+		if d2 < 324.0: # 18^2
 			_collect(pl)
 	else:
 		position.y += sin(t * 3.0) * 6.0 * delta
@@ -41,7 +46,10 @@ func _collect(pl: Node2D) -> void:
 	else:
 		pl.heal(value)
 		pl.game.sfx.play("heal")
-	queue_free()
+	if game:
+		game._recycle_pickup(self)
+	else:
+		queue_free()
 
 
 func _draw() -> void:

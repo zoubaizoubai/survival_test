@@ -1,6 +1,7 @@
 extends Node2D
 
 class FloatText extends Label:
+	var game: Node
 	var life := 0.7
 	var vy := -46.0
 	var color_value := Color.WHITE
@@ -23,10 +24,14 @@ class FloatText extends Label:
 		vy *= 0.94
 		modulate.a = clampf(life / 0.35, 0.0, 1.0)
 		if life <= 0.0:
-			queue_free()
+			if game and game.has_method("_recycle_float_text"):
+				game._recycle_float_text(self)
+			else:
+				queue_free()
 
 
 class Burst extends Node2D:
+	var game: Node
 	var color_v := Color.WHITE
 	var max_r := 20.0
 	var life := 0.35
@@ -35,7 +40,10 @@ class Burst extends Node2D:
 	func _process(delta: float) -> void:
 		t += delta
 		if t >= life:
-			queue_free()
+			if game and game.has_method("_recycle_burst"):
+				game._recycle_burst(self)
+			else:
+				queue_free()
 			return
 		queue_redraw()
 
@@ -50,24 +58,29 @@ class Burst extends Node2D:
 
 
 class Lightning extends Node2D:
+	var game: Node
 	var target := Vector2.ZERO
 	var life := 0.22
 	var t := 0.0
 	var pts := PackedVector2Array()
 
 	func _ready() -> void:
-		var start := target + Vector2(randf_range(-60, 60), -430)
-		pts.append(start)
-		var segs := 7
-		for i in range(1, segs):
-			var k := float(i) / float(segs)
-			pts.append(start.lerp(target, k) + Vector2(randf_range(-26, 26), 0))
-		pts.append(target)
+		if pts.is_empty():
+			var start := target + Vector2(randf_range(-60, 60), -430)
+			pts.append(start)
+			var segs := 7
+			for i in range(1, segs):
+				var k := float(i) / float(segs)
+				pts.append(start.lerp(target, k) + Vector2(randf_range(-26, 26), 0))
+			pts.append(target)
 
 	func _process(delta: float) -> void:
 		t += delta
 		if t >= life:
-			queue_free()
+			if game and game.has_method("_recycle_lightning"):
+				game._recycle_lightning(self)
+			else:
+				queue_free()
 			return
 		queue_redraw()
 

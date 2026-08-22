@@ -168,7 +168,7 @@ func orb_positions() -> Array:
 func _nearest_enemy(max_d: float) -> Node2D:
 	var best: Node2D = null
 	var bd := max_d * max_d
-	for e in get_tree().get_nodes_in_group("enemies"):
+	for e in game.get_enemies():
 		if e.dead:
 			continue
 		var d: float = global_position.distance_squared_to(e.global_position)
@@ -188,13 +188,7 @@ func _fire_dagger() -> bool:
 	for i in n:
 		var spread := deg_to_rad(-8.0 * (n - 1) * 0.5 + 8.0 * i)
 		var d := dir0.rotated(spread)
-		var p := ProjectileScript.new()
-		p.game = game
-		p.dir = d
-		p.dmg = st["dmg"]
-		p.pierce = st["pierce"]
-		p.position = position + d * 16.0
-		game.projectiles_node.add_child(p)
+		game.spawn_projectile(d, st["dmg"], st["pierce"], position + d * 16.0)
 	game.sfx.play("shoot")
 	return true
 
@@ -202,7 +196,7 @@ func _fire_dagger() -> bool:
 func _fire_lightning() -> void:
 	var st := wstat("lightning")
 	var pool: Array = []
-	for e in get_tree().get_nodes_in_group("enemies"):
+	for e in game.get_enemies():
 		if e.dead:
 			continue
 		var off: Vector2 = (e.global_position - global_position).abs()
@@ -220,10 +214,14 @@ func _fire_lightning() -> void:
 
 
 func _area_damage(pos: Vector2, r: float, dmg: float) -> void:
-	for e in get_tree().get_nodes_in_group("enemies"):
+	var rr: float = r
+	for e in game.get_enemies():
 		if e.dead:
 			continue
-		if pos.distance_to(e.global_position) < r + e.radius:
+		# 距离平方避免 sqrt
+		var dist2: float = pos.distance_squared_to(e.global_position)
+		var rad: float = rr + e.radius
+		if dist2 < rad * rad:
 			game.hurt_enemy(e, dmg, (e.global_position - pos).normalized() * 80.0)
 
 
@@ -231,10 +229,12 @@ func _aura_tick() -> void:
 	var st := wstat("aura")
 	var r: float = st["radius"]
 	var dmg: float = st["dps"] * 0.5
-	for e in get_tree().get_nodes_in_group("enemies"):
+	for e in game.get_enemies():
 		if e.dead:
 			continue
-		if global_position.distance_to(e.global_position) < r + e.radius:
+		var dist2: float = global_position.distance_squared_to(e.global_position)
+		var rad: float = r + e.radius
+		if dist2 < rad * rad:
 			game.hurt_enemy(e, dmg)
 
 
@@ -245,7 +245,7 @@ func _orbit_damage(delta: float) -> void:
 		orbit_hits.clear()
 	var st := wstat("orbit")
 	var positions := orb_positions()
-	for e in get_tree().get_nodes_in_group("enemies"):
+	for e in game.get_enemies():
 		if e.dead:
 			continue
 		var eid: int = e.get_instance_id()
@@ -255,7 +255,8 @@ func _orbit_damage(delta: float) -> void:
 				continue
 		for op in positions:
 			var og: Vector2 = global_position + op
-			if og.distance_to(e.global_position) < 12.0 + e.radius:
+			var rad: float = 12.0 + e.radius
+			if og.distance_squared_to(e.global_position) < rad * rad:
 				game.hurt_enemy(e, st["dmg"], (e.global_position - global_position).normalized() * 150.0)
 				orbit_hits[eid] = 0.45
 				break

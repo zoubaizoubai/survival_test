@@ -16,18 +16,26 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	life -= delta
 	if life <= 0.0:
-		queue_free()
+		if game:
+			game._recycle_projectile(self)
+		else:
+			queue_free()
 		return
 	position += dir * speed * delta
-	for e in get_tree().get_nodes_in_group("enemies"):
+	# 碰撞：使用注册表与平方距离，避免 pow
+	for e in game.get_enemies() if game else []:
 		if e.dead or hit_ids.has(e.get_instance_id()):
 			continue
-		if global_position.distance_squared_to(e.global_position) < pow(e.radius + 7.0, 2.0):
+		var rad: float = e.radius + 7.0
+		if global_position.distance_squared_to(e.global_position) < rad * rad:
 			hit_ids[e.get_instance_id()] = true
 			game.hurt_enemy(e, dmg, dir * 130.0)
 			pierce -= 1
 			if pierce <= 0:
-				queue_free()
+				if game:
+					game._recycle_projectile(self)
+				else:
+					queue_free()
 				return
 
 

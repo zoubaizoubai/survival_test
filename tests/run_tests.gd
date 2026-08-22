@@ -530,16 +530,17 @@ func _test_perf_scenarios() -> void:
 	for elapsed in scenarios:
 		var result: Dictionary = await _run_perf_one(elapsed, _seed + int(elapsed))
 		_perf_results.append(result)
-		print("  [PERF] elapsed=%.0f  enemies=%d  pickups=%d  nodes=%d  avg_ms=%.3f  objects=%d" % [result["elapsed"], result["enemies"], result["pickups"], result["total_nodes"], result["avg_ms"], result["object_count"]])
-		# 阈值校验： headless 单帧模拟应远小于 16ms
-		_assert(result["avg_ms"] < 8.0, "elapsed %.0fs 帧耗时 <8ms (%.3fms)" % [elapsed, result["avg_ms"]], "elapsed %.0fs 帧耗时过高: %.3fms" % [elapsed, result["avg_ms"]])
+		print("  [PERF] elapsed=%.0f  enemies=%d  pickups=%d  nodes=%d  avg_ms=%.3f  p95=%.3f  objects=%d" % [result["elapsed"], result["enemies"], result["pickups"], result["total_nodes"], result["avg_ms"], result["p95_ms"], result["object_count"]])
+		_assert(result["avg_ms"] < 8.0, "elapsed %.0fs 平均 <8ms (%.3fms)" % [elapsed, result["avg_ms"]], "平均过高: %.3fms" % result["avg_ms"])
+		_assert(result["p95_ms"] < 8.0, "elapsed %.0fs 95分位 <8ms (%.3fms)" % [elapsed, result["p95_ms"]], "95分位过高: %.3fms" % result["p95_ms"])
 	# 上限场景：填满敌人与掉落物
 	var cap_result: Dictionary = await _run_perf_caps()
 	_perf_results.append(cap_result)
-	print("  [PERF] caps enemies=%d pickups=%d nodes=%d avg_ms=%.3f" % [cap_result["enemies"], cap_result["pickups"], cap_result["total_nodes"], cap_result["avg_ms"]])
+	print("  [PERF] caps enemies=%d pickups=%d nodes=%d avg_ms=%.3f p95=%.3f" % [cap_result["enemies"], cap_result["pickups"], cap_result["total_nodes"], cap_result["avg_ms"], cap_result["p95_ms"]])
 	_assert(cap_result["enemies"] >= 170 and cap_result["enemies"] <= 172, "敌人上限 170-172（含Boss）", "enemies=%d" % cap_result["enemies"])
 	_assert(cap_result["pickups"] <= 355, "掉落物上限约 350", "pickups=%d" % cap_result["pickups"])
-	_assert(cap_result["avg_ms"] < 10.0, "上限场景帧耗时 <10ms (%.3fms)" % cap_result["avg_ms"], "上限帧耗时过高")
+	_assert(cap_result["avg_ms"] < 10.0, "上限场景平均 <10ms (%.3fms)" % cap_result["avg_ms"], "平均过高")
+	_assert(cap_result["p95_ms"] < 10.0, "上限场景 95分位 <10ms (%.3fms)" % cap_result["p95_ms"], "95分位过高")
 
 
 func _run_perf_one(elapsed_val: float, seed_val: int) -> Dictionary:
@@ -577,25 +578,30 @@ func _run_perf_one(elapsed_val: float, seed_val: int) -> Dictionary:
 	var total_nodes: int = _count_total_nodes()
 	var object_count: float = Performance.get_monitor(Performance.OBJECT_COUNT)
 	var object_nodes: float = Performance.get_monitor(Performance.OBJECT_NODE_COUNT)
-	# 测量 200 帧模拟耗时
+	# 测量 200 帧模拟耗时（含 95 分位）
 	var iterations: int = 200
 	var dt: float = 1.0 / 60.0
+	var samples: Array = []
+	samples.resize(iterations)
 	var t0: int = Time.get_ticks_usec()
 	for iter in iterations:
+		var s0: int = Time.get_ticks_usec()
 		g._process(dt)
-		# 敌人与玩家
 		var enemies_node: Node = g.get("enemies_node") as Node
 		for e in enemies_node.get_children():
 			e._process(dt)
 		var player_node: Node = g.get("player") as Node
 		player_node._process(dt)
-		# 投射物
 		var proj_node: Node = g.get("projectiles_node") as Node
 		for p in proj_node.get_children():
 			p._process(dt)
+		var s1: int = Time.get_ticks_usec()
+		samples[iter] = float(s1 - s0) / 1000.0
 	var t1: int = Time.get_ticks_usec()
 	var avg_ms: float = float(t1 - t0) / float(iterations) / 1000.0
-	# 额外统计真实帧间隔（可选）
+	samples.sort()
+	var p95_ms: float = float(samples[int(iterations * 0.95)])
+	var p50_ms: float = float(samples[int(iterations * 0.5)])
 	var result: Dictionary = {
 		"elapsed": elapsed_val,
 		"enemies": enemies,
@@ -604,6 +610,8 @@ func _run_perf_one(elapsed_val: float, seed_val: int) -> Dictionary:
 		"object_count": int(object_count),
 		"object_nodes": int(object_nodes),
 		"avg_ms": avg_ms,
+		"p95_ms": p95_ms,
+		"p50_ms": p50_ms,
 		"seed": seed_val,
 		"iterations": iterations,
 	}
@@ -655,14 +663,21 @@ func _run_perf_caps() -> Dictionary:
 	g.set("elite_t", 9999.0)
 	var total_nodes: int = _count_total_nodes()
 	var enemies_for_result: int = int(g._live_count())
+	var samples2: Array = []
+	samples2.resize(200)
 	var t0: int = Time.get_ticks_usec()
 	for iter in 200:
+		var s0: int = Time.get_ticks_usec()
 		g._process(0.016)
 		for e in (g.get("enemies_node") as Node).get_children():
 			e._process(0.016)
 		(g.get("player") as Node)._process(0.016)
+		var s1: int = Time.get_ticks_usec()
+		samples2[iter] = float(s1 - s0) / 1000.0
 	var t1: int = Time.get_ticks_usec()
 	var avg_ms: float = float(t1 - t0) / 200.0 / 1000.0
+	samples2.sort()
+	var p95_ms: float = float(samples2[int(200 * 0.95)])
 	var result: Dictionary = {
 		"elapsed": 999.0,
 		"label": "caps",
@@ -671,6 +686,7 @@ func _run_perf_caps() -> Dictionary:
 		"total_nodes": total_nodes,
 		"object_count": int(Performance.get_monitor(Performance.OBJECT_COUNT)),
 		"avg_ms": avg_ms,
+		"p95_ms": p95_ms,
 		"seed": _seed + 9999,
 	}
 	g.queue_free()
@@ -1109,8 +1125,9 @@ func _print_summary() -> void:
 	if _perf_results.size() > 0:
 		print("性能基线摘要：")
 		for r in _perf_results:
+			var p95: float = float(r.get("p95_ms", r.get("avg_ms", 0.0)))
 			if r.has("label"):
-				print("  caps: enemies=%d pickups=%d nodes=%d avg_ms=%.3f" % [r["enemies"], r["pickups"], r["total_nodes"], r["avg_ms"]])
+				print("  caps: enemies=%d pickups=%d nodes=%d avg_ms=%.3f p95=%.3f" % [r["enemies"], r["pickups"], r["total_nodes"], r["avg_ms"], p95])
 			else:
-				print("  %.0fs: enemies=%d pickups=%d nodes=%d avg_ms=%.3f" % [r["elapsed"], r["enemies"], r["pickups"], r["total_nodes"], r["avg_ms"]])
+				print("  %.0fs: enemies=%d pickups=%d nodes=%d avg_ms=%.3f p95=%.3f" % [r["elapsed"], r["enemies"], r["pickups"], r["total_nodes"], r["avg_ms"], p95])
 
