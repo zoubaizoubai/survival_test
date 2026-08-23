@@ -5,6 +5,10 @@ const SaveData := preload("res://scripts/save_data.gd")
 const MusicScript := preload("res://scripts/music.gd")
 const GameData := preload("res://scripts/game_data.gd")
 const UiStyle := preload("res://scripts/ui_style.gd")
+const UiMode := preload("res://scripts/ui_mode.gd")
+
+const HOME_BG := Color(0.055, 0.085, 0.095, 1.0)
+const MENU_BG := Color(0.105, 0.095, 0.105, 1.0)
 
 var settings_layer: Control
 var volume_slider: HSlider
@@ -23,12 +27,17 @@ var clear_save_button: Button
 var clear_confirm_layer: Control
 var clear_confirm_cancel_button: Button
 var clear_confirm_accept_button: Button
+var _hero: TextureRect
+var _menu_background: ColorRect
+var _menu_transition: TextureRect
+var _mobile_ui := false
 
 
 func _ready() -> void:
 	Settings.ensure_loaded()
 	SaveData.ensure_loaded()
 	GameData.ensure_loaded()
+	_mobile_ui = UiMode.is_mobile()
 	_build_settings_layer()
 	_build_stats_display()
 	if not has_node("Music"):
@@ -49,6 +58,7 @@ func _ready() -> void:
 	if start_btn:
 		start_btn.grab_focus()
 	_rebuild_title_layout()
+	_apply_platform_ui()
 	# 响应式：监听视口变化
 	get_viewport().size_changed.connect(_on_viewport_resized)
 	_on_viewport_resized()
@@ -143,16 +153,13 @@ func _rebuild_title_layout() -> void:
 		return
 	var bg: ColorRect = get_node_or_null("Background") as ColorRect
 	if bg:
-		bg.color = Color(0.10, 0.14, 0.16, 1.0)
-	var glow_top: ColorRect = get_node_or_null("GlowTop") as ColorRect
-	if glow_top:
-		glow_top.color = Color(0.94, 0.42, 0.38, 0.10)
+		bg.color = HOME_BG
 	var old: Control = get_node_or_null("CenterContainer") as Control
 	var vbox: VBoxContainer = get_node_or_null("CenterContainer/VBoxContainer") as VBoxContainer
 	if vbox == null:
 		return
 	vbox.custom_minimum_size = Vector2(380, 0)
-	vbox.add_theme_constant_override("separation", 10)
+	vbox.add_theme_constant_override("separation", 11)
 	var icon_node: Control = vbox.get_node_or_null("Icon") as Control
 	if icon_node:
 		icon_node.visible = false
@@ -178,15 +185,15 @@ func _rebuild_title_layout() -> void:
 	var exit_btn: Button = vbox.get_node_or_null("ExitButton") as Button
 	if start_btn:
 		start_btn.text = "开始游戏"
-		start_btn.custom_minimum_size = Vector2(280, 56)
+		start_btn.custom_minimum_size = Vector2(320, 58)
 		UiStyle.apply_button(start_btn, true)
 	if settings_btn:
 		settings_btn.text = "设置"
-		settings_btn.custom_minimum_size = Vector2(280, 48)
+		settings_btn.custom_minimum_size = Vector2(320, 50)
 		UiStyle.apply_button(settings_btn, false)
 	if exit_btn:
 		exit_btn.text = "退出游戏"
-		exit_btn.custom_minimum_size = Vector2(280, 48)
+		exit_btn.custom_minimum_size = Vector2(320, 50)
 		UiStyle.apply_button(exit_btn, false)
 	if stats_label:
 		stats_label.add_theme_color_override("font_color", Color(1, 0.95, 0.85, 0.82))
@@ -208,57 +215,158 @@ func _rebuild_title_layout() -> void:
 			slot += 1
 	var root := Control.new()
 	root.name = "TitleRoot"
-	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(root)
-	move_child(root, 3)
-	var hero := TextureRect.new()
-	hero.name = "Hero"
-	hero.texture = UiStyle.tex("res://assets/ui/home_hero.png")
-	hero.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	hero.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-	hero.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	hero.set_anchors_preset(Control.PRESET_LEFT_WIDE)
-	hero.anchor_right = 0.56
-	hero.offset_left = 0
-	hero.offset_right = 0
-	hero.offset_top = 0
-	hero.offset_bottom = 0
-	root.add_child(hero)
-	var shade := ColorRect.new()
-	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	shade.color = Color(0.05, 0.04, 0.06, 0.18)
-	shade.set_anchors_preset(Control.PRESET_RIGHT_WIDE)
-	shade.anchor_left = 0.48
-	root.add_child(shade)
+	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	if old:
-		old.anchor_left = 0.46
+		move_child(root, old.get_index())
+	_hero = TextureRect.new()
+	_hero.name = "Hero"
+	_hero.texture = UiStyle.tex("res://assets/ui/home_hero.png")
+	_hero.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_hero.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	_hero.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(_hero)
+	_hero.set_anchors_and_offsets_preset(Control.PRESET_LEFT_WIDE)
+	_hero.anchor_right = 0.58
+
+	var transition_gradient := Gradient.new()
+	transition_gradient.offsets = PackedFloat32Array([0.0, 0.12, 0.24, 1.0])
+	transition_gradient.colors = PackedColorArray([
+		Color(MENU_BG.r, MENU_BG.g, MENU_BG.b, 0.0),
+		Color(MENU_BG.r, MENU_BG.g, MENU_BG.b, 0.38),
+		MENU_BG,
+		MENU_BG,
+	])
+	var transition_texture := GradientTexture1D.new()
+	transition_texture.gradient = transition_gradient
+	transition_texture.width = 256
+	_menu_transition = TextureRect.new()
+	_menu_transition.name = "MenuTransition"
+	_menu_transition.texture = transition_texture
+	_menu_transition.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_menu_transition.stretch_mode = TextureRect.STRETCH_SCALE
+	_menu_transition.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(_menu_transition)
+	_menu_transition.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_menu_transition.anchor_left = 0.42
+	_menu_transition.anchor_right = 1.0
+
+	_menu_background = ColorRect.new()
+	_menu_background.name = "MenuBackground"
+	_menu_background.color = MENU_BG
+	_menu_background.visible = false
+	_menu_background.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(_menu_background)
+	_menu_background.set_anchors_and_offsets_preset(Control.PRESET_RIGHT_WIDE)
+	_menu_background.anchor_left = 0.548
+	if old:
+		old.anchor_left = 0.54
 		old.anchor_right = 1.0
 		old.anchor_top = 0.0
 		old.anchor_bottom = 1.0
-		old.offset_left = 0
-		old.offset_right = -16
+		old.offset_left = 12
+		old.offset_right = -24
 		old.offset_top = 0
 		old.offset_bottom = 0
 		old.visible = true
+
+
+func _apply_platform_ui() -> void:
+	var vbox: VBoxContainer = get_node_or_null("CenterContainer/VBoxContainer") as VBoxContainer
+	if vbox == null:
+		return
+	var start_btn: Button = vbox.get_node_or_null("StartButton") as Button
+	var settings_btn: Button = vbox.get_node_or_null("SettingsButton") as Button
+	var exit_btn: Button = vbox.get_node_or_null("ExitButton") as Button
 	var tip: Label = vbox.get_node_or_null("Tip") as Label
+	var version_label: Label = get_node_or_null("BottomBar/Version") as Label
+	if exit_btn:
+		exit_btn.visible = UiMode.can_quit()
 	if tip:
-		tip.text = "触摸左下移动 · 自动攻击 · 撑过 5 分钟"
-		tip.add_theme_color_override("font_color", Color(1, 1, 1, 0.5))
+		tip.text = UiMode.home_input_hint()
+		tip.add_theme_color_override("font_color", Color(1, 1, 1, 0.56))
+	if version_label:
+		var version: String = str(ProjectSettings.get_setting("application/config/version", ""))
+		version_label.text = "v%s  ·  %s" % [version, UiMode.platform_label()]
+	if start_btn == null or settings_btn == null:
+		return
+	if exit_btn and exit_btn.visible:
+		start_btn.focus_neighbor_top = NodePath("../ExitButton")
+		start_btn.focus_neighbor_bottom = NodePath("../SettingsButton")
+		settings_btn.focus_neighbor_top = NodePath("../StartButton")
+		settings_btn.focus_neighbor_bottom = NodePath("../ExitButton")
+	else:
+		start_btn.focus_neighbor_top = NodePath("../SettingsButton")
+		start_btn.focus_neighbor_bottom = NodePath("../SettingsButton")
+		start_btn.focus_next = NodePath("../SettingsButton")
+		start_btn.focus_previous = NodePath("../SettingsButton")
+		settings_btn.focus_neighbor_top = NodePath("../StartButton")
+		settings_btn.focus_neighbor_bottom = NodePath("../StartButton")
+		settings_btn.focus_next = NodePath("../StartButton")
+		settings_btn.focus_previous = NodePath("../StartButton")
 
 
 func _on_viewport_resized() -> void:
-	# 针对 20:9 等超宽屏，限制中央容器最大宽度并处理安全区域
 	var vp: Vector2 = get_viewport_rect().size
+	if vp.x <= 0.0 or vp.y <= 0.0:
+		return
+	var aspect: float = vp.x / vp.y
+	var compact_height: bool = vp.y < 650.0
+	var portrait_layout: bool = aspect < 1.35
+	var old: Control = get_node_or_null("CenterContainer") as Control
+	var vbox: VBoxContainer = get_node_or_null("CenterContainer/VBoxContainer") as VBoxContainer
 	var title: Label = get_node_or_null("CenterContainer/VBoxContainer/Title") as Label
 	if title:
-		if vp.x / maxf(vp.y, 1.0) > 2.0:
-			title.add_theme_font_size_override("font_size", 46)
-		else:
-			title.add_theme_font_size_override("font_size", 56)
-	var hero: TextureRect = get_node_or_null("TitleRoot/Hero") as TextureRect
-	if hero:
-		hero.anchor_right = 0.62 if vp.x / maxf(vp.y, 1.0) > 1.95 else 0.56
+		title.add_theme_font_size_override("font_size", 44 if compact_height or portrait_layout else 54)
+	if portrait_layout:
+		if _hero:
+			_hero.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		if _menu_background:
+			_menu_background.visible = true
+			_menu_background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+			_menu_background.color = Color(MENU_BG.r, MENU_BG.g, MENU_BG.b, 0.88)
+		if _menu_transition:
+			_menu_transition.visible = false
+		if old:
+			old.anchor_left = 0.06
+			old.anchor_right = 0.94
+			old.offset_left = 0
+			old.offset_right = 0
+	else:
+		var hero_right: float = clampf((vp.y / vp.x) * 1.02, 0.46, 0.58)
+		var panel_left: float = maxf(hero_right - 0.02, 0.44)
+		if _hero:
+			_hero.set_anchors_and_offsets_preset(Control.PRESET_LEFT_WIDE)
+			_hero.anchor_right = hero_right
+		if _menu_background:
+			_menu_background.visible = false
+		if _menu_transition:
+			_menu_transition.visible = true
+			_menu_transition.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+			_menu_transition.anchor_left = maxf(panel_left - 0.13, 0.0)
+			_menu_transition.anchor_right = 1.0
+		if old:
+			old.anchor_left = maxf(panel_left - 0.01, 0.43)
+			old.anchor_right = 1.0
+			old.offset_left = 12
+			old.offset_right = -24
+	if vbox and old:
+		var available_width: float = vp.x * (old.anchor_right - old.anchor_left) - 72.0
+		var button_width: float = clampf(available_width - 36.0, 260.0, 340.0)
+		vbox.custom_minimum_size = Vector2(maxf(button_width, 280.0), 0)
+		vbox.add_theme_constant_override("separation", 8 if compact_height else 11)
+		for button_name in ["StartButton", "SettingsButton", "ExitButton"]:
+			var button: Button = vbox.get_node_or_null(button_name) as Button
+			if button:
+				button.custom_minimum_size.x = button_width
+		if stats_label:
+			stats_label.custom_minimum_size.x = minf(button_width, 340.0)
+		if unlock_label:
+			unlock_label.custom_minimum_size.x = minf(button_width, 340.0)
+	var settings_panel: PanelContainer = get_node_or_null("SettingsLayer/CenterContainer/PanelContainer") as PanelContainer
+	if settings_panel:
+		settings_panel.custom_minimum_size.x = clampf(vp.x - 40.0, 340.0, 440.0)
 
 
 func _build_settings_layer() -> void:

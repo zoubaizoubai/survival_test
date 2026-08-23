@@ -7,6 +7,8 @@ extends SceneTree
 
 const SaveDataRef := preload("res://scripts/save_data.gd")
 const SettingsRef := preload("res://scripts/settings.gd")
+const UiModeRef := preload("res://scripts/ui_mode.gd")
+const JoystickRef := preload("res://scripts/joystick.gd")
 
 var _seed: int = 1337
 var _verbose: bool = true
@@ -137,6 +139,7 @@ func _initialize() -> void:
 
 func _run_all() -> void:
 	await _test_settings_input_responsive()
+	await _test_platform_ui_adaptation()
 	await _test_data_driven()
 	await _test_home_load()
 	await _test_game_load()
@@ -158,6 +161,42 @@ func _run_all() -> void:
 	# 确保所有异步清理完成
 	await process_frame
 	await process_frame
+
+
+func _test_platform_ui_adaptation() -> void:
+	print("\n[UI] 桌面与移动端响应式界面")
+	var original_mode: String = str(ProjectSettings.get_setting(UiModeRef.PREVIEW_SETTING, UiModeRef.MODE_AUTO))
+	var home_res: PackedScene = load("res://scenes/home.tscn") as PackedScene
+	if not _assert(home_res != null, "响应式 UI 测试可加载 Home", "响应式 UI 测试无法加载 Home"):
+		return
+	for mode in [UiModeRef.MODE_DESKTOP, UiModeRef.MODE_MOBILE]:
+		ProjectSettings.set_setting(UiModeRef.PREVIEW_SETTING, mode)
+		_assert(UiModeRef.current() == mode, "UI 预览模式可切换为 %s" % mode, "UI 预览模式切换失败: %s" % mode)
+		var home: Control = home_res.instantiate() as Control
+		root.add_child(home)
+		await process_frame
+		var exit_btn: Button = home.get_node_or_null("CenterContainer/VBoxContainer/ExitButton") as Button
+		var tip: Label = home.get_node_or_null("CenterContainer/VBoxContainer/Tip") as Label
+		var version: Label = home.get_node_or_null("BottomBar/Version") as Label
+		var joystick: Control = JoystickRef.new()
+		root.add_child(joystick)
+		joystick.set_enabled(UiModeRef.is_mobile())
+		_assert(home.has_node("TitleRoot/MenuTransition"), "%s 首页使用渐变分区" % mode, "%s 首页缺少渐变分区" % mode)
+		_assert(not home.has_node("GlowTop") and not home.has_node("GlowBottom"), "%s 首页移除硬边矩形光晕" % mode, "%s 首页仍包含硬边矩形光晕" % mode)
+		if mode == UiModeRef.MODE_MOBILE:
+			_assert(exit_btn != null and not exit_btn.visible, "移动端隐藏退出按钮", "移动端退出按钮仍可见")
+			_assert(tip != null and tip.text.contains("左下"), "移动端显示触控提示", "移动端触控提示错误")
+			_assert(version != null and version.text.contains("移动版"), "移动端版本标识正确", "移动端版本标识错误")
+			_assert(joystick.visible, "移动端显示虚拟摇杆", "移动端虚拟摇杆被隐藏")
+		else:
+			_assert(exit_btn != null and exit_btn.visible, "桌面端显示退出按钮", "桌面端退出按钮被隐藏")
+			_assert(tip != null and tip.text.contains("WASD"), "桌面端显示键鼠提示", "桌面端键鼠提示错误")
+			_assert(version != null and version.text.contains("桌面版"), "桌面端版本标识正确", "桌面端版本标识错误")
+			_assert(not joystick.visible, "桌面端隐藏虚拟摇杆", "桌面端虚拟摇杆仍可见")
+		home.queue_free()
+		joystick.queue_free()
+		await process_frame
+	ProjectSettings.set_setting(UiModeRef.PREVIEW_SETTING, original_mode)
 
 
 # --------------------------------------------------

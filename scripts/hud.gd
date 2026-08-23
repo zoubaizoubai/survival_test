@@ -3,6 +3,7 @@ extends Control
 const Settings := preload("res://scripts/settings.gd")
 const SpriteLibrary := preload("res://scripts/sprite_library.gd")
 const UiStyle := preload("res://scripts/ui_style.gd")
+const UiMode := preload("res://scripts/ui_mode.gd")
 
 var game: Node2D
 var hp_fill: Control
@@ -24,11 +25,14 @@ var _xp_trough: Control
 var _weapon_row: HBoxContainer
 var _kill_icon: TextureRect
 var _time_bg: PanelContainer
+var _controls_hint: PanelContainer
+var _mobile_ui := false
 
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_mobile_ui = UiMode.is_mobile()
 
 	low_overlay = ColorRect.new()
 	low_overlay.color = Color(1.0, 0.15, 0.15, 0.0)
@@ -92,6 +96,7 @@ func _ready() -> void:
 	pause_btn = Button.new()
 	pause_btn.name = "PauseBtn"
 	pause_btn.text = ""
+	pause_btn.tooltip_text = "暂停" if _mobile_ui else "暂停（Esc / P）"
 	pause_btn.focus_mode = Control.FOCUS_ALL
 	pause_btn.custom_minimum_size = Vector2(46, 46)
 	var pause_icon := SpriteLibrary.icon("pause")
@@ -127,9 +132,12 @@ func _ready() -> void:
 	_xp_bar.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
 	add_child(_xp_bar)
 
-	lv_label = _make_label("LV 1", 14, Color(1.0, 0.93, 0.72))
-	lv_label.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
-	add_child(lv_label)
+	lv_label = _make_label("LV 1", 14, Color(UiStyle.INK.r, UiStyle.INK.g, UiStyle.INK.b, 0.92), false)
+	lv_label.position = Vector2(78, 40)
+	lv_label.size = Vector2(74, 42)
+	lv_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lv_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_xp_bar.add_child(lv_label)
 
 	_weapon_row = HBoxContainer.new()
 	_weapon_row.name = "WeaponRow"
@@ -146,6 +154,8 @@ func _ready() -> void:
 		slot.modulate = Color(1, 1, 1, 0.35)
 		slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_weapon_row.add_child(slot)
+
+	_build_controls_hint()
 
 	boss_bar = ColorRect.new()
 	boss_bar.name = "BossBar"
@@ -170,6 +180,27 @@ func _ready() -> void:
 	_update_layout()
 
 
+func _build_controls_hint() -> void:
+	_controls_hint = PanelContainer.new()
+	_controls_hint.name = "ControlsHint"
+	_controls_hint.visible = not _mobile_ui
+	_controls_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var hint_style := StyleBoxFlat.new()
+	hint_style.bg_color = Color(0.035, 0.055, 0.06, 0.78)
+	hint_style.set_corner_radius_all(12)
+	hint_style.set_border_width_all(1)
+	hint_style.border_color = Color(1.0, 0.92, 0.78, 0.20)
+	hint_style.content_margin_left = 14
+	hint_style.content_margin_right = 14
+	hint_style.content_margin_top = 7
+	hint_style.content_margin_bottom = 7
+	_controls_hint.add_theme_stylebox_override("panel", hint_style)
+	_controls_hint.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
+	add_child(_controls_hint)
+	var hint_label := _make_label("WASD / 方向键移动   ·   Esc 暂停", 12, Color(1, 1, 1, 0.72), false)
+	_controls_hint.add_child(hint_label)
+
+
 func _update_layout() -> void:
 	var vp: Vector2 = get_viewport_rect().size
 	var is_wide: bool = vp.x / maxf(vp.y, 1.0) > 1.95
@@ -190,11 +221,6 @@ func _update_layout() -> void:
 		pause_btn.offset_right = -12
 		pause_btn.offset_top = 10
 		pause_btn.offset_bottom = 54
-	if lv_label:
-		lv_label.offset_left = margin + 8
-		lv_label.offset_right = 140
-		lv_label.offset_top = -136
-		lv_label.offset_bottom = -110
 	if _xp_bar:
 		_xp_bar.offset_left = -210
 		_xp_bar.offset_right = 210
@@ -214,6 +240,11 @@ func _update_layout() -> void:
 		_time_bg.offset_right = 70
 		_time_bg.offset_top = 10
 		_time_bg.offset_bottom = 50
+	if _controls_hint:
+		_controls_hint.offset_left = margin
+		_controls_hint.offset_right = margin + 300
+		_controls_hint.offset_top = -60
+		_controls_hint.offset_bottom = -16
 
 
 func _make_framed_bar(bar_name: String, frame_path: String, bar_size: Vector2, fill_color: Color, trough_uv: Rect2) -> Dictionary:
@@ -314,6 +345,8 @@ func _make_label(txt: String, font_size: int, col: Color, outline: bool = true) 
 
 func _process(delta: float) -> void:
 	t += delta
+	if _controls_hint and _controls_hint.visible:
+		_controls_hint.modulate.a = clampf((8.0 - t) / 2.0, 0.0, 1.0)
 	var pl: Node2D = game.player
 	if pl == null:
 		return

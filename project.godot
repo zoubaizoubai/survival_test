@@ -75,6 +75,10 @@ pause={
 
 pointing/emulate_touch_from_mouse=true
 
+[ui]
+
+platform/preview_mode="auto"
+
 [physics]
 
 3d/physics_engine="Jolt Physics"

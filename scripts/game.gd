@@ -12,6 +12,7 @@ const JoystickScript := preload("res://scripts/joystick.gd")
 const SfxScript := preload("res://scripts/sfx.gd")
 const MusicScript := preload("res://scripts/music.gd")
 const SaveData := preload("res://scripts/save_data.gd")
+const UiMode := preload("res://scripts/ui_mode.gd")
 
 const GameData := preload("res://scripts/game_data.gd")
 const Settings := preload("res://scripts/settings.gd")
@@ -148,6 +149,7 @@ func _ready() -> void:
 	joystick = JoystickScript.new()
 	joystick.name = "Joystick"
 	ui.add_child(joystick)
+	joystick.set_enabled(UiMode.is_mobile())
 	menus = MenusScript.new()
 	menus.name = "Menus"
 	menus.game = self

@@ -73,10 +73,13 @@ static func apply_button(b: Button, accent: bool = false) -> void:
 	var normal := _capsule(accent, 0)
 	var hover := _capsule(accent, 1)
 	var pressed := _capsule(accent, 2)
+	var focus: StyleBoxFlat = hover.duplicate()
+	focus.set_border_width_all(3)
+	focus.border_color = Color(1.0, 0.92, 0.72, 0.78) if accent else Color(1, 1, 1, 0.52)
 	b.add_theme_stylebox_override("normal", normal)
 	b.add_theme_stylebox_override("hover", hover)
 	b.add_theme_stylebox_override("pressed", pressed)
-	b.add_theme_stylebox_override("focus", hover)
+	b.add_theme_stylebox_override("focus", focus)
 
 
 static func _capsule(accent: bool, state: int) -> StyleBoxFlat:
@@ -104,6 +107,9 @@ static func _capsule(accent: bool, state: int) -> StyleBoxFlat:
 				sb.border_color = Color(1, 1, 1, 0.24)
 		sb.set_border_width_all(2)
 	sb.set_corner_radius_all(24)
+	sb.shadow_color = Color(0, 0, 0, 0.22 if state != 2 else 0.12)
+	sb.shadow_size = 5 if state != 2 else 2
+	sb.shadow_offset = Vector2(0, 2 if state != 2 else 1)
 	sb.content_margin_left = 22
 	sb.content_margin_right = 22
 	sb.content_margin_top = 12

@@ -2,6 +2,7 @@ extends Control
 
 const UiStyle := preload("res://scripts/ui_style.gd")
 const SpriteLibrary := preload("res://scripts/sprite_library.gd")
+const UiMode := preload("res://scripts/ui_mode.gd")
 
 var game: Node2D
 var upgrade_layer: Control
@@ -13,11 +14,13 @@ var end_stats: Label
 var endless_btn: Button
 var _cards_scroll: ScrollContainer
 var _focused_card_idx: int = 0
+var _mobile_ui := false
 
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_mobile_ui = UiMode.is_mobile()
 
 	var uv := VBoxContainer.new()
 	uv.name = "UpgradeV"
@@ -47,9 +50,10 @@ func _ready() -> void:
 	var pv := VBoxContainer.new()
 	pv.name = "PauseV"
 	pv.alignment = BoxContainer.ALIGNMENT_CENTER
-	pv.add_theme_constant_override("separation", 14)
-	pv.add_child(_make_label("已暂停", 34, Color.WHITE))
-	pv.add_child(_spacer(10))
+	pv.add_theme_constant_override("separation", 12)
+	pv.add_child(_make_label("已暂停", 38, Color(1.0, 0.96, 0.88)))
+	pv.add_child(_make_label("点按按钮继续" if _mobile_ui else "Esc / P 继续游戏", 13, Color(1, 1, 1, 0.58)))
+	pv.add_child(_spacer(8))
 	var resume_btn := _make_button("继续游戏", true)
 	resume_btn.name = "ResumeBtn"
 	resume_btn.pressed.connect(toggle_pause)
@@ -62,15 +66,6 @@ func _ready() -> void:
 	home_btn.name = "HomeBtn"
 	home_btn.pressed.connect(func(): game.to_home())
 	pv.add_child(_center(home_btn))
-	# 设置按钮（从暂停进入设置，需返回暂停）
-	var settings_btn := _make_button("设置")
-	settings_btn.name = "SettingsBtn"
-	settings_btn.pressed.connect(func():
-		# 设置请在主页调整
-		if game.menus.pause_layer.visible:
-			print("设置请在主页调整")
-	)
-	pv.add_child(_center(settings_btn))
 	pause_layer = _make_dim_layer(pv)
 	pause_layer.name = "PauseLayer"
 
@@ -167,7 +162,7 @@ func _make_dim_layer(content: Control) -> Control:
 	layer.visible = false
 	add_child(layer)
 	var dim := ColorRect.new()
-	dim.color = Color(0.05, 0.03, 0.04, 0.72)
+	dim.color = Color(0.025, 0.03, 0.035, 0.80)
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	dim.mouse_filter = Control.MOUSE_FILTER_STOP
 	layer.add_child(dim)
@@ -205,7 +200,7 @@ func _center(n: Control) -> CenterContainer:
 func _make_button(text_value: String, accent: bool = false) -> Button:
 	var b := Button.new()
 	b.text = text_value
-	b.custom_minimum_size = Vector2(240, 52)
+	b.custom_minimum_size = Vector2(280 if _mobile_ui else 260, 54)
 	b.focus_mode = Control.FOCUS_ALL
 	UiStyle.apply_button(b, accent)
 	return b
