@@ -34,6 +34,7 @@ var _mobile_ui := false
 
 
 func _ready() -> void:
+	theme = UiStyle.ui_theme()
 	Settings.ensure_loaded()
 	SaveData.ensure_loaded()
 	GameData.ensure_loaded()

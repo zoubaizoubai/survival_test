@@ -5,6 +5,28 @@ const CREAM := Color(0.96, 0.90, 0.78)
 const CORAL := Color(0.94, 0.42, 0.38)
 const INK := Color(0.18, 0.12, 0.08)
 const TEAL := Color(0.12, 0.18, 0.22)
+const UI_FONT_PATH := "res://assets/fonts/noto_sans_cjk_sc_ui.woff2"
+
+static var _ui_font: Font
+static var _ui_theme: Theme
+
+
+static func ui_font() -> Font:
+	if _ui_font == null:
+		_ui_font = load(UI_FONT_PATH) as Font
+		if _ui_font == null:
+			var system_font := SystemFont.new()
+			system_font.font_names = PackedStringArray(["sans-serif"])
+			system_font.allow_system_fallback = true
+			_ui_font = system_font
+	return _ui_font
+
+
+static func ui_theme() -> Theme:
+	if _ui_theme == null:
+		_ui_theme = Theme.new()
+		_ui_theme.default_font = ui_font()
+	return _ui_theme
 
 
 static func tex(path: String) -> Texture2D:
@@ -58,6 +80,7 @@ static func apply_button(b: Button, accent: bool = false) -> void:
 	# Capsule textures cannot 9-slice at HUD button height (margins exceed size
 	# and collapse into a hollow ring). Draw filled StyleBoxFlat capsules instead.
 	b.add_theme_font_size_override("font_size", 20 if accent else 16)
+	b.add_theme_font_override("font", ui_font())
 	if accent:
 		b.add_theme_color_override("font_color", Color.WHITE)
 		b.add_theme_color_override("font_hover_color", Color.WHITE)
@@ -118,6 +141,7 @@ static func _capsule(accent: bool, state: int) -> StyleBoxFlat:
 
 
 static func apply_label(l: Label, size: int, col: Color, outline: bool = true) -> void:
+	l.add_theme_font_override("font", ui_font())
 	l.add_theme_font_size_override("font_size", size)
 	l.add_theme_color_override("font_color", col)
 	if outline:

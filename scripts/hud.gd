@@ -26,12 +26,14 @@ var _weapon_row: HBoxContainer
 var _kill_icon: TextureRect
 var _time_bg: PanelContainer
 var _controls_hint: PanelContainer
+var _level_badge: PanelContainer
 var _mobile_ui := false
 
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	theme = UiStyle.ui_theme()
 	_mobile_ui = UiMode.is_mobile()
 
 	low_overlay = ColorRect.new()
@@ -132,12 +134,7 @@ func _ready() -> void:
 	_xp_bar.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
 	add_child(_xp_bar)
 
-	lv_label = _make_label("LV 1", 14, Color(UiStyle.INK.r, UiStyle.INK.g, UiStyle.INK.b, 0.92), false)
-	lv_label.position = Vector2(78, 40)
-	lv_label.size = Vector2(74, 42)
-	lv_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	lv_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_xp_bar.add_child(lv_label)
+	_build_level_badge()
 
 	_weapon_row = HBoxContainer.new()
 	_weapon_row.name = "WeaponRow"
@@ -201,6 +198,28 @@ func _build_controls_hint() -> void:
 	_controls_hint.add_child(hint_label)
 
 
+func _build_level_badge() -> void:
+	_level_badge = PanelContainer.new()
+	_level_badge.name = "LevelBadge"
+	_level_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var badge_style := StyleBoxFlat.new()
+	badge_style.bg_color = Color(0.10, 0.075, 0.055, 0.94)
+	badge_style.set_corner_radius_all(14)
+	badge_style.set_border_width_all(2)
+	badge_style.border_color = Color(0.96, 0.90, 0.78, 0.72)
+	badge_style.content_margin_left = 14
+	badge_style.content_margin_right = 14
+	badge_style.content_margin_top = 4
+	badge_style.content_margin_bottom = 4
+	_level_badge.add_theme_stylebox_override("panel", badge_style)
+	_level_badge.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	add_child(_level_badge)
+	lv_label = _make_label("LV 1", 14, Color(1.0, 0.94, 0.78), true)
+	lv_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lv_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_level_badge.add_child(lv_label)
+
+
 func _update_layout() -> void:
 	var vp: Vector2 = get_viewport_rect().size
 	var is_wide: bool = vp.x / maxf(vp.y, 1.0) > 1.95
@@ -228,6 +247,11 @@ func _update_layout() -> void:
 		_xp_bar.offset_bottom = -8
 		_xp_bar.size = Vector2(420, 126)
 		_layout_trough(_xp_bar)
+	if _level_badge:
+		_level_badge.offset_left = -48
+		_level_badge.offset_right = 48
+		_level_badge.offset_top = -158
+		_level_badge.offset_bottom = -126
 	if _weapon_row:
 		_weapon_row.offset_left = -200
 		_weapon_row.offset_right = -16
@@ -260,9 +284,9 @@ func _make_framed_bar(bar_name: String, frame_path: String, bar_size: Vector2, f
 	frame.texture = UiStyle.tex(frame_path)
 	frame.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	frame.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	frame.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	wrap.add_child(frame)
+	frame.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var trough := Control.new()
 	trough.name = "Trough"
 	trough.clip_contents = true
@@ -276,8 +300,40 @@ func _make_framed_bar(bar_name: String, frame_path: String, bar_size: Vector2, f
 	fsb.set_corner_radius_all(20)
 	fill.add_theme_stylebox_override("panel", fsb)
 	trough.add_child(fill)
+	# The source texture contains both the opaque trough background and the
+	# wooden/icon decoration. Redraw only its border/icon pixels above the fill.
+	var decor := TextureRect.new()
+	decor.name = "Decor"
+	decor.texture = frame.texture
+	decor.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	decor.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	decor.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var decor_shader := Shader.new()
+	decor_shader.code = """
+shader_type canvas_item;
+uniform vec4 trough_rect;
+uniform float icon_end = 0.235;
+
+void fragment() {
+	vec4 tex_color = texture(TEXTURE, UV);
+	bool inside_trough = UV.x >= trough_rect.x
+		&& UV.x <= trough_rect.x + trough_rect.z
+		&& UV.y >= trough_rect.y
+		&& UV.y <= trough_rect.y + trough_rect.w;
+	if (inside_trough && UV.x >= icon_end) {
+		tex_color.a = 0.0;
+	}
+	COLOR = tex_color;
+}
+"""
+	var decor_material := ShaderMaterial.new()
+	decor_material.shader = decor_shader
+	decor_material.set_shader_parameter("trough_rect", Vector4(trough_uv.position.x, trough_uv.position.y, trough_uv.size.x, trough_uv.size.y))
+	decor.material = decor_material
+	wrap.add_child(decor)
+	decor.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_layout_trough(wrap)
-	return {"wrap": wrap, "trough": trough, "fill": fill}
+	return {"wrap": wrap, "trough": trough, "fill": fill, "decor": decor}
 
 
 func _layout_trough(wrap: Control) -> void:

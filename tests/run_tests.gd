@@ -9,6 +9,7 @@ const SaveDataRef := preload("res://scripts/save_data.gd")
 const SettingsRef := preload("res://scripts/settings.gd")
 const UiModeRef := preload("res://scripts/ui_mode.gd")
 const JoystickRef := preload("res://scripts/joystick.gd")
+const UiStyleRef := preload("res://scripts/ui_style.gd")
 
 var _seed: int = 1337
 var _verbose: bool = true
@@ -165,6 +166,8 @@ func _run_all() -> void:
 
 func _test_platform_ui_adaptation() -> void:
 	print("\n[UI] 桌面与移动端响应式界面")
+	var chinese_font: Font = UiStyleRef.ui_font()
+	_assert(chinese_font.has_char("敌".unicode_at(0)), "UI 字体覆盖常用中文字符", "UI 字体缺少“敌”字")
 	var original_mode: String = str(ProjectSettings.get_setting(UiModeRef.PREVIEW_SETTING, UiModeRef.MODE_AUTO))
 	var home_res: PackedScene = load("res://scenes/home.tscn") as PackedScene
 	if not _assert(home_res != null, "响应式 UI 测试可加载 Home", "响应式 UI 测试无法加载 Home"):
@@ -282,6 +285,15 @@ func _test_game_load() -> void:
 	_assert(g.get("menus") != null, "Game 创建 menus", "menus 为 null")
 	_assert(g.get("cam") != null, "Game 创建 cam", "cam 为 null")
 	_assert((g.get("cam") as Camera2D).is_current(), "Camera2D 为 current", "相机未设为 current")
+	var hud: Control = g.get("hud") as Control
+	var hp_bar: Control = hud.get("_hp_bg") as Control
+	var xp_bar: Control = hud.get("_xp_bar") as Control
+	var level_badge: PanelContainer = hud.get("_level_badge") as PanelContainer
+	_assert(hp_bar.size == Vector2(300, 88), "生命条保持装饰图比例", "生命条尺寸=%s" % str(hp_bar.size))
+	_assert(xp_bar.size == Vector2(420, 126), "经验条保持装饰图比例", "经验条尺寸=%s" % str(xp_bar.size))
+	_assert(hp_bar.get_node("Frame").get_index() < hp_bar.get_node("Trough").get_index() and hp_bar.get_node("Trough").get_index() < hp_bar.get_node("Decor").get_index(), "生命填充夹在底图与木框装饰之间", "生命条图层顺序错误")
+	_assert(xp_bar.get_node("Frame").get_index() < xp_bar.get_node("Trough").get_index() and xp_bar.get_node("Trough").get_index() < xp_bar.get_node("Decor").get_index(), "经验填充夹在底图与木框装饰之间", "经验条图层顺序错误")
+	_assert(level_badge != null and hud.get("lv_label").get_parent() == level_badge, "等级信息独立于经验填充", "等级信息仍压在经验条内")
 	_assert(float(g.get("elapsed")) < 0.1, "初始 elapsed 接近 0", "elapsed=%s" % str(g.get("elapsed")))
 	_assert(g.get("running") == true, "初始 running 为 true", "running=%s" % str(g.get("running")))
 	_assert(g.get("ended") == false, "初始 ended 为 false", "ended=%s" % str(g.get("ended")))
@@ -964,7 +976,7 @@ func _test_settings_input_responsive() -> void:
 	var joy: Control = preload("res://scripts/joystick.gd").new()
 	_assert(joy.get("RADIUS") == 70.0, "摇杆半径 70", "实际 %s" % str(joy.get("RADIUS")))
 	joy.queue_free()
-	# 3. 响应式：1280x720 与 20:9 (1280x576) 下无裁切/重叠
+	# 3. 响应式：基准、偏高与 20:9 等比例下无裁切/重叠
 	var game_res: Resource = load("res://scenes/game.tscn")
 	var g: Node = (game_res as PackedScene).instantiate() as Node
 	root.add_child(g)
@@ -974,7 +986,7 @@ func _test_settings_input_responsive() -> void:
 	var menus: Control = g.get("menus") as Control
 	var vp: Window = root
 	var original_size: Vector2i = vp.size
-	for size in [Vector2i(1280, 720), Vector2i(1280, 576), Vector2i(2560, 1152)]:
+	for size in [Vector2i(1280, 720), Vector2i(1280, 817), Vector2i(1280, 576), Vector2i(2560, 1152)]:
 		# 真正调整 root Window；只传一个假 size 给断言无法覆盖响应式布局。
 		vp.size = size
 		await process_frame
@@ -1020,7 +1032,7 @@ func _test_settings_input_responsive() -> void:
 			await process_frame
 	vp.size = original_size
 	await process_frame
-	print("  响应式校验在 3 种尺寸下完成")
+	print("  响应式校验在 4 种尺寸下完成")
 	g.queue_free()
 	home.queue_free()
 	await process_frame
@@ -1095,6 +1107,9 @@ func _test_data_driven() -> void:
 	_assert(gd.weapons.has("frost"), "武器包含 frost", "缺失")
 	var boom: Dictionary = gd.weapons["boomerang"] as Dictionary
 	var frost: Dictionary = gd.weapons["frost"] as Dictionary
+	_assert(str(boom["desc"]).contains("敌人"), "boomerang 中文文案完整", "desc=%s" % str(boom["desc"]))
+	_assert(str(frost["desc"]).contains("敌人"), "frost 中文文案完整", "desc=%s" % str(frost["desc"]))
+	_assert(not str(boom["desc"]).contains("�") and not str(frost["desc"]).contains("�"), "升级卡文案无 Unicode 替换字符", "boomerang=%s frost=%s" % [str(boom["desc"]), str(frost["desc"])])
 	_assert((boom["levels"] as Array).size() == 8, "boomerang 等级 8", "实际 %d" % ((boom["levels"] as Array).size()))
 	_assert((frost["levels"] as Array).size() == 8, "frost 等级 8", "实际 %d" % ((frost["levels"] as Array).size()))
 	# 检查机制差异：dagger boomerang frost 字段不同

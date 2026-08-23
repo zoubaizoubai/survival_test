@@ -20,6 +20,7 @@ var _mobile_ui := false
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	theme = UiStyle.ui_theme()
 	_mobile_ui = UiMode.is_mobile()
 
 	var uv := VBoxContainer.new()
