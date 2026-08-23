@@ -42,7 +42,7 @@ func _ready() -> void:
 	low_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(low_overlay)
 
-	var hp_parts: Dictionary = _make_framed_bar("HpBg", "res://assets/ui/hp_bar.png", Vector2(300, 88), Color(0.42, 0.86, 0.40), Rect2(0.1680, 0.3046, 0.7441, 0.3775))
+	var hp_parts: Dictionary = _make_framed_bar("HpBg", "res://assets/ui/hp_bar.png", Vector2(300, 88), Color(0.42, 0.86, 0.40), Rect2(0.2422, 0.3046, 0.6699, 0.3775))
 	_hp_bg = hp_parts["wrap"]
 	hp_fill = hp_parts["fill"]
 	_hp_trough = hp_parts["trough"]
@@ -127,7 +127,7 @@ func _ready() -> void:
 	)
 	add_child(pause_btn)
 
-	var xp_parts: Dictionary = _make_framed_bar("XpBar", "res://assets/ui/xp_bar.png", Vector2(420, 126), Color(0.32, 0.72, 0.95), Rect2(0.1367, 0.3052, 0.7754, 0.3766))
+	var xp_parts: Dictionary = _make_framed_bar("XpBar", "res://assets/ui/xp_bar.png", Vector2(420, 126), Color(0.32, 0.72, 0.95), Rect2(0.2070, 0.3052, 0.7051, 0.3766))
 	_xp_bar = xp_parts["wrap"]
 	xp_fill = xp_parts["fill"]
 	_xp_trough = xp_parts["trough"]
@@ -298,42 +298,11 @@ func _make_framed_bar(bar_name: String, frame_path: String, bar_size: Vector2, f
 	var fsb := StyleBoxFlat.new()
 	fsb.bg_color = fill_color
 	fsb.set_corner_radius_all(20)
+	fsb.corner_detail = 12
 	fill.add_theme_stylebox_override("panel", fsb)
 	trough.add_child(fill)
-	# The source texture contains both the opaque trough background and the
-	# wooden/icon decoration. Redraw only its border/icon pixels above the fill.
-	var decor := TextureRect.new()
-	decor.name = "Decor"
-	decor.texture = frame.texture
-	decor.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	decor.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	decor.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var decor_shader := Shader.new()
-	decor_shader.code = """
-shader_type canvas_item;
-uniform vec4 trough_rect;
-uniform float icon_end = 0.235;
-
-void fragment() {
-	vec4 tex_color = texture(TEXTURE, UV);
-	bool inside_trough = UV.x >= trough_rect.x
-		&& UV.x <= trough_rect.x + trough_rect.z
-		&& UV.y >= trough_rect.y
-		&& UV.y <= trough_rect.y + trough_rect.w;
-	if (inside_trough && UV.x >= icon_end) {
-		tex_color.a = 0.0;
-	}
-	COLOR = tex_color;
-}
-"""
-	var decor_material := ShaderMaterial.new()
-	decor_material.shader = decor_shader
-	decor_material.set_shader_parameter("trough_rect", Vector4(trough_uv.position.x, trough_uv.position.y, trough_uv.size.x, trough_uv.size.y))
-	decor.material = decor_material
-	wrap.add_child(decor)
-	decor.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_layout_trough(wrap)
-	return {"wrap": wrap, "trough": trough, "fill": fill, "decor": decor}
+	return {"wrap": wrap, "trough": trough, "fill": fill}
 
 
 func _layout_trough(wrap: Control) -> void:
@@ -367,12 +336,16 @@ func _set_fill(fill: Control, trough: Control, pct: float) -> void:
 	if fill == null or trough == null:
 		return
 	var h: float = trough.size.y
+	var w: float = trough.size.x * clampf(pct, 0.0, 1.0)
 	fill.position = Vector2.ZERO
-	fill.size = Vector2(trough.size.x * clampf(pct, 0.0, 1.0), h)
+	fill.size = Vector2(w, h)
+	fill.visible = w > 0.01
 	if fill is Panel:
 		var sb: StyleBox = (fill as Panel).get_theme_stylebox("panel")
 		if sb is StyleBoxFlat:
-			(sb as StyleBoxFlat).set_corner_radius_all(int(round(h * 0.5)))
+			# Clamp the radius to both dimensions so tiny values remain circular
+			# instead of collapsing into a square or an invalid capsule.
+			(sb as StyleBoxFlat).set_corner_radius_all(int(round(minf(h, w) * 0.5)))
 
 
 func _set_fill_color(fill: Control, col: Color) -> void:

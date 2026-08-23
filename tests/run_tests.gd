@@ -289,10 +289,29 @@ func _test_game_load() -> void:
 	var hp_bar: Control = hud.get("_hp_bg") as Control
 	var xp_bar: Control = hud.get("_xp_bar") as Control
 	var level_badge: PanelContainer = hud.get("_level_badge") as PanelContainer
+	var hp_trough: Control = hud.get("_hp_trough") as Control
+	var xp_trough: Control = hud.get("_xp_trough") as Control
+	var hp_fill: Control = hud.get("hp_fill") as Control
+	var xp_fill: Control = hud.get("xp_fill") as Control
 	_assert(hp_bar.size == Vector2(300, 88), "生命条保持装饰图比例", "生命条尺寸=%s" % str(hp_bar.size))
 	_assert(xp_bar.size == Vector2(420, 126), "经验条保持装饰图比例", "经验条尺寸=%s" % str(xp_bar.size))
-	_assert(hp_bar.get_node("Frame").get_index() < hp_bar.get_node("Trough").get_index() and hp_bar.get_node("Trough").get_index() < hp_bar.get_node("Decor").get_index(), "生命填充夹在底图与木框装饰之间", "生命条图层顺序错误")
-	_assert(xp_bar.get_node("Frame").get_index() < xp_bar.get_node("Trough").get_index() and xp_bar.get_node("Trough").get_index() < xp_bar.get_node("Decor").get_index(), "经验填充夹在底图与木框装饰之间", "经验条图层顺序错误")
+	_assert(hp_bar.get_node("Frame").get_index() < hp_bar.get_node("Trough").get_index(), "生命填充位于内槽底图上层", "生命条图层顺序错误")
+	_assert(xp_bar.get_node("Frame").get_index() < xp_bar.get_node("Trough").get_index(), "经验填充位于内槽底图上层", "经验条图层顺序错误")
+	_assert(hp_trough.position.x > hp_bar.size.x * 0.23 and xp_trough.position.x > xp_bar.size.x * 0.19, "状态条分别从心形/星形右侧起步", "hp=%s xp=%s" % [str(hp_trough.position), str(xp_trough.position)])
+	hud._set_fill(hp_fill, hp_trough, 0.0)
+	_assert(not hp_fill.visible and is_zero_approx(hp_fill.size.x), "0% 生命不显示填充", "visible=%s size=%s" % [str(hp_fill.visible), str(hp_fill.size)])
+	hud._set_fill(hp_fill, hp_trough, 0.05)
+	var hp_fill_style: StyleBoxFlat = (hp_fill as Panel).get_theme_stylebox("panel") as StyleBoxFlat
+	var expected_low_radius: int = int(round(minf(hp_trough.size.y, hp_fill.size.x) * 0.5))
+	_assert(is_equal_approx(hp_fill.size.x, hp_trough.size.x * 0.05), "5% 生命填充宽度准确", "fill=%s trough=%s" % [str(hp_fill.size), str(hp_trough.size)])
+	_assert(hp_fill_style.get_corner_radius(CORNER_TOP_LEFT) == expected_low_radius, "低进度端帽保持圆滑", "radius=%d expected=%d" % [hp_fill_style.get_corner_radius(CORNER_TOP_LEFT), expected_low_radius])
+	hud._set_fill(xp_fill, xp_trough, 0.5)
+	_assert(is_equal_approx(xp_fill.size.x, xp_trough.size.x * 0.5), "50% 经验填充宽度准确", "fill=%s trough=%s" % [str(xp_fill.size), str(xp_trough.size)])
+	hud._set_fill(xp_fill, xp_trough, 1.0)
+	var xp_fill_style: StyleBoxFlat = (xp_fill as Panel).get_theme_stylebox("panel") as StyleBoxFlat
+	_assert(xp_fill.position == Vector2.ZERO and is_equal_approx(xp_fill.size.x, xp_trough.size.x), "100% 经验完整填满内槽", "fill=%s trough=%s" % [str(xp_fill.size), str(xp_trough.size)])
+	_assert(xp_fill_style.get_corner_radius(CORNER_TOP_RIGHT) == int(round(xp_trough.size.y * 0.5)), "100% 经验两端圆角匹配内槽", "radius=%d height=%f" % [xp_fill_style.get_corner_radius(CORNER_TOP_RIGHT), xp_trough.size.y])
+	hud._process(0.0)
 	_assert(level_badge != null and hud.get("lv_label").get_parent() == level_badge, "等级信息独立于经验填充", "等级信息仍压在经验条内")
 	_assert(float(g.get("elapsed")) < 0.1, "初始 elapsed 接近 0", "elapsed=%s" % str(g.get("elapsed")))
 	_assert(g.get("running") == true, "初始 running 为 true", "running=%s" % str(g.get("running")))

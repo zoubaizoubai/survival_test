@@ -14,12 +14,12 @@
 ```json
 {
   "dagger": {
-    "name": "飞刀",
-    "color": {"r":0.65,"g":0.9,"b":1.0},
-    "desc": "自动射向最近的敌人，可穿透",
-    "levels": [
-      {"count":1,"dmg":12.0,"cd":0.85,"pierce":1}
-    ]
+	"name": "飞刀",
+	"color": {"r":0.65,"g":0.9,"b":1.0},
+	"desc": "自动射向最近的敌人，可穿透",
+	"levels": [
+	  {"count":1,"dmg":12.0,"cd":0.85,"pierce":1}
+	]
   }
 }
 ```
@@ -61,7 +61,7 @@
   "elite_interval":40.0,
   "boss_times":[150.0,250.0],
   "kind_thresholds":[
-    {"elapsed_lt":25.0,"weights":{"slime":1.0}}
+	{"elapsed_lt":25.0,"weights":{"slime":1.0}}
   ],
   "enemy_scaling":{"hp_per_sec":0.011,"speed_per_sec":0.0005,"speed_max":1.2,"speed_rand_min":0.92,"speed_rand_max":1.08,"dmg_per_sec":0.0022}
 }
