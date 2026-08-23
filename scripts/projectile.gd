@@ -14,6 +14,7 @@ var boomerang_has_returned := false
 
 
 func _ready() -> void:
+	dir = _safe_direction(dir)
 	rotation = dir.angle()
 
 
@@ -25,35 +26,40 @@ func _process(delta: float) -> void:
 		else:
 			queue_free()
 		return
+	var previous_position := global_position
+	dir = _safe_direction(dir)
 	if is_boomerang:
 		boomerang_t += delta
 		if not boomerang_has_returned and boomerang_t >= boomerang_return:
 			boomerang_has_returned = true
 			# 翻转向玩家
 			if game and game.player:
-				dir = (game.player.global_position - global_position).normalized()
-				if dir == Vector2.ZERO:
-					dir = -dir
+				var return_direction: Vector2 = game.player.global_position - global_position
+				dir = _safe_direction(return_direction, -dir)
 				rotation = dir.angle()
 		elif boomerang_has_returned and game and game.player:
 			# 归航：轻微导向
 			var to_p: Vector2 = game.player.global_position - global_position
-			dir = dir.lerp(to_p.normalized(), 6.0 * delta).normalized()
+			if to_p.length_squared() > 0.000001:
+				var desired := to_p.normalized()
+				dir = _safe_direction(dir.lerp(desired, minf(6.0 * delta, 1.0)), desired)
 			rotation = dir.angle()
 			# 若接近玩家则回收视为结束（避免一直飞）
-			if to_p.length() < 18.0 and life < 1.0:
+			if to_p.length_squared() < 324.0 and life < 1.0:
 				if game:
 					game._recycle_projectile(self)
 				else:
 					queue_free()
 				return
 	position += dir * speed * delta
-	# 碰撞：使用注册表与平方距离，避免 pow
+	if is_boomerang:
+		queue_redraw()
+	# 线段-圆碰撞避免低帧或高速子弹跨过敌人。
 	for e in game.get_enemies() if game else []:
 		if e.dead or hit_ids.has(e.get_instance_id()):
 			continue
 		var rad: float = e.radius + 7.0
-		if global_position.distance_squared_to(e.global_position) < rad * rad:
+		if _segment_hits_circle(previous_position, global_position, e.global_position, rad):
 			hit_ids[e.get_instance_id()] = true
 			game.hurt_enemy(e, dmg, dir * 130.0)
 			pierce -= 1
@@ -63,6 +69,24 @@ func _process(delta: float) -> void:
 				else:
 					queue_free()
 				return
+
+
+func _safe_direction(value: Vector2, fallback: Vector2 = Vector2.RIGHT) -> Vector2:
+	if value.length_squared() > 0.000001:
+		return value.normalized()
+	if fallback.length_squared() > 0.000001:
+		return fallback.normalized()
+	return Vector2.RIGHT
+
+
+func _segment_hits_circle(from: Vector2, to: Vector2, center: Vector2, radius: float) -> bool:
+	var segment := to - from
+	var segment_length_sq := segment.length_squared()
+	if segment_length_sq <= 0.000001:
+		return from.distance_squared_to(center) <= radius * radius
+	var along := clampf((center - from).dot(segment) / segment_length_sq, 0.0, 1.0)
+	var closest := from + segment * along
+	return closest.distance_squared_to(center) <= radius * radius
 
 
 func _draw() -> void:

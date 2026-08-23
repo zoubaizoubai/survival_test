@@ -10,11 +10,14 @@ func _ready() -> void:
 	player.bus = "Music"
 	player.autoplay = false
 	add_child(player)
+	# 无头测试没有音频输出；创建 WAV 仍会注册 playback/stream，导致进程
+	# 退出时留下 ObjectDB 实例，因此在 headless 下完全跳过音源构造。
+	if DisplayServer.get_name() == "headless" or OS.has_feature("headless"):
+		return
 	player.stream = _make_music()
 	player.volume_db = linear_to_db(base_vol)
 	player.finished.connect(_on_finished)
-	if not OS.has_feature("headless"):
-		player.play()
+	player.play()
 
 func _on_finished() -> void:
 	if player and not OS.has_feature("headless"):
@@ -68,3 +71,7 @@ func set_enabled(v: bool) -> void:
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_PREDELETE and player:
 		player.stop()
+		# AudioStreamPlaybackWAV keeps a reference to the generated stream after
+		# stop(). Release it explicitly so scene changes and headless shutdown do
+		# not leave the playback/stream pair alive.
+		player.stream = null

@@ -16,6 +16,16 @@ const SaveData := preload("res://scripts/save_data.gd")
 const GameData := preload("res://scripts/game_data.gd")
 const Settings := preload("res://scripts/settings.gd")
 
+const SPECIAL_ENEMY_RESERVE := 2
+const SPECIAL_ENEMY_LIMITS := {
+	"elite": 1,
+	"boss": 1,
+}
+const MIN_SPAWN_DISTANCE := 360.0
+const MAX_PICKUPS := 350
+const MAX_HEART_PICKUPS := 24
+const PICKUP_LIFETIME := 60.0
+
 # 数值由 data/balance.json 集中管理，此处为兼容层：通过 GameData 暴露，保持原有字段名可通过 g.get() 访问
 var ARENA: float:
 	get: return GameData.arena
@@ -63,6 +73,7 @@ var boss_idx := 0
 var shake := 0.0
 var _wave_idx := 0
 var _wave_cache: Array = []
+var _recorded_stats_checkpoint: Dictionary = {}
 
 # --- 性能优化：对象池与注册表 ---
 var _proj_pool: Array = []
@@ -211,34 +222,29 @@ func _trigger_wave_event(wd: Dictionary) -> void:
 	match ev:
 		"charger_wave":
 			for i in cnt:
-				if _live_count() >= MAX_ENEMIES:
+				if not _spawn_at("charger", _spawn_pos()):
 					break
-				_spawn_at("charger", _spawn_pos())
 		"caster_ring":
 			# 在玩家周围环形生成 caster 预警展示
 			for i in cnt:
-				if _live_count() >= MAX_ENEMIES:
+				if not _spawn_at("caster", _spawn_pos()):
 					break
-				_spawn_at("caster", _spawn_pos())
 		"mix_wave":
 			for i in cnt:
-				if _live_count() >= MAX_ENEMIES:
-					break
 				var k: String = "charger" if i % 2 == 0 else "caster"
 				if i % 4 == 0:
 					k = "brute"
-				_spawn_at(k, _spawn_pos())
+				if not _spawn_at(k, _spawn_pos()):
+					break
 		"finale":
 			for i in cnt:
-				if _live_count() >= MAX_ENEMIES:
-					break
 				var kk: String = ["charger", "caster", "brute", "bat"][i % 4]
-				_spawn_at(kk, _spawn_pos())
+				if not _spawn_at(kk, _spawn_pos()):
+					break
 		_:
 			for i in cnt:
-				if _live_count() >= MAX_ENEMIES:
+				if not _spawn_at(_pick_kind(), _spawn_pos()):
 					break
-				_spawn_at(_pick_kind(), _spawn_pos())
 
 
 func _update_spawner(delta: float) -> void:
@@ -267,13 +273,42 @@ func _update_spawner(delta: float) -> void:
 		_spawn_at("elite", _spawn_pos())
 	var boss_times: Array = GameData.spawn.get("boss_times", [150.0, 250.0]) as Array
 	if boss_idx < boss_times.size() and elapsed >= float(boss_times[boss_idx]):
-		boss_idx += 1
-		_spawn_at("boss", _spawn_pos())
+		# Boss 被配额暂时阻塞时保留日程，空出名额后重试。
+		if _spawn_at("boss", _spawn_pos()):
+			boss_idx += 1
 
 
 func _live_count() -> int:
 	# 直接子节点计数，避免 group 哈希查找
 	return enemies_node.get_child_count() if enemies_node else 0
+
+
+func _live_regular_count() -> int:
+	var count := 0
+	for e in get_enemies():
+		if not SPECIAL_ENEMY_LIMITS.has(str(e.get("kind"))):
+			count += 1
+	return count
+
+
+func _live_enemy_kind_count(kind: String) -> int:
+	var count := 0
+	for e in get_enemies():
+		if str(e.get("kind")) == kind:
+			count += 1
+	return count
+
+
+func _can_spawn_enemy(kind: String) -> bool:
+	if enemies_node == null or _live_count() >= MAX_ENEMIES:
+		return false
+	if SPECIAL_ENEMY_LIMITS.has(kind):
+		return _live_enemy_kind_count(kind) < int(SPECIAL_ENEMY_LIMITS[kind])
+	# 极小的自定义上限也至少保留 1 个普通敌人槽，避免
+	# MAX_ENEMIES=1/2 时导演永远无法启动。
+	var reserve_slots := mini(SPECIAL_ENEMY_RESERVE, maxi(MAX_ENEMIES - 1, 0))
+	var regular_limit := MAX_ENEMIES - reserve_slots
+	return _live_regular_count() < regular_limit
 
 func get_enemies() -> Array:
 	# 注册表：直接返回子节点数组，避免 get_nodes_in_group
@@ -287,10 +322,38 @@ func _spawn_pos() -> Vector2:
 	var p: Vector2 = player.position
 	var ang := randf() * TAU
 	var r := SPAWN_R + randf_range(-40.0, 160.0)
-	var pos := p + Vector2.from_angle(ang) * r
-	pos.x = clampf(pos.x, -ARENA + 40.0, ARENA - 40.0)
-	pos.y = clampf(pos.y, -ARENA + 40.0, ARENA - 40.0)
-	return pos
+	var bound := maxf(ARENA - 40.0, 0.0)
+	var pos := (p + Vector2.from_angle(ang) * r).clamp(Vector2(-bound, -bound), Vector2(bound, bound))
+	var best_pos := pos
+	var best_distance_sq := p.distance_squared_to(pos)
+	var safe_distance_sq := MIN_SPAWN_DISTANCE * MIN_SPAWN_DISTANCE
+	if best_distance_sq >= safe_distance_sq:
+		return pos
+	# 靠近场地边角时，径向点会被钳制到玩家身边。围绕原角度寻找最远的合法点。
+	var candidate_radius := maxf(r, MIN_SPAWN_DISTANCE)
+	for i in 8:
+		var candidate := (p + Vector2.from_angle(ang + TAU * float(i) / 8.0) * candidate_radius).clamp(
+			Vector2(-bound, -bound),
+			Vector2(bound, bound),
+		)
+		var candidate_distance_sq := p.distance_squared_to(candidate)
+		if candidate_distance_sq > best_distance_sq:
+			best_pos = candidate
+			best_distance_sq = candidate_distance_sq
+		if best_distance_sq >= safe_distance_sq:
+			return best_pos
+	# 极小测试场地可能无法满足固定距离；此时仍返回矩形内离玩家最远的点。
+	for corner in [
+		Vector2(-bound, -bound),
+		Vector2(-bound, bound),
+		Vector2(bound, -bound),
+		Vector2(bound, bound),
+	]:
+		var corner_distance_sq := p.distance_squared_to(corner)
+		if corner_distance_sq > best_distance_sq:
+			best_pos = corner
+			best_distance_sq = corner_distance_sq
+	return best_pos
 
 
 func _pick_kind() -> String:
@@ -349,18 +412,19 @@ func _pick_kind() -> String:
 
 
 func _spawn_one() -> void:
-	if _live_count() >= MAX_ENEMIES:
-		return
 	_spawn_at(_pick_kind(), _spawn_pos())
 
 
-func _spawn_at(kind: String, pos: Vector2) -> void:
+func _spawn_at(kind: String, pos: Vector2) -> bool:
+	if not _can_spawn_enemy(kind):
+		return false
 	var e := EnemyScript.new()
 	e.game = self
 	e.kind = kind
 	e.position = pos
 	e.died.connect(_on_enemy_died)
 	enemies_node.add_child(e)
+	return true
 
 
 func hurt_enemy(e: Node2D, dmg: float, kdir: Vector2 = Vector2.ZERO) -> void:
@@ -483,32 +547,107 @@ func _drop_gems(pos: Vector2, count: int, value: int) -> void:
 		_spawn_pickup("gem", pos + off, value)
 
 
+func _pickup_kind_count(kind: String) -> int:
+	var count := 0
+	for pickup in get_pickups():
+		if str(pickup.get("kind")) == kind and not bool(pickup.get("collected")):
+			count += 1
+	return count
+
+
+func _find_pickup_merge_target(kind: String, pos: Vector2, excluded: Node = null) -> Node:
+	var nearest: Node = null
+	var nearest_distance_sq := INF
+	for pickup in get_pickups():
+		if pickup == excluded or bool(pickup.get("collected")) or str(pickup.get("kind")) != kind:
+			continue
+		var distance_sq: float = pos.distance_squared_to((pickup as Node2D).position)
+		if distance_sq < nearest_distance_sq:
+			nearest = pickup
+			nearest_distance_sq = distance_sq
+	return nearest
+
+
+func _merge_pickup_value(kind: String, pos: Vector2, value: int, excluded: Node = null) -> bool:
+	var target := _find_pickup_merge_target(kind, pos, excluded)
+	if target == null:
+		return false
+	target.set("value", int(target.get("value")) + maxi(value, 0))
+	target.set("life", PICKUP_LIFETIME)
+	(target as CanvasItem).queue_redraw()
+	return true
+
+
+func _compact_pickup_kind(kind: String) -> bool:
+	# 把两个同类掉落合为一个以腾出节点，保留两者完整数值。
+	var source: Node = null
+	for pickup in get_pickups():
+		if bool(pickup.get("collected")) or str(pickup.get("kind")) != kind:
+			continue
+		if source == null:
+			source = pickup
+			continue
+		if _merge_pickup_value(kind, (source as Node2D).position, int(source.get("value")), source):
+			_recycle_pickup(source)
+			return true
+	return false
+
+
 func _spawn_pickup(kind: String, pos: Vector2, value: int) -> void:
-	if kind == "gem" and pickups_node.get_child_count() > 350:
+	if pickups_node == null or value <= 0:
 		return
+	# 心脏也有单独配额；达到配额时合并治疗量，不增加节点。
+	if kind == "heart" and _pickup_kind_count("heart") >= MAX_HEART_PICKUPS:
+		_merge_pickup_value(kind, pos, value)
+		return
+	if pickups_node.get_child_count() >= MAX_PICKUPS:
+		# 经验不能因节点上限消失：优先合并进最近的宝石。
+		if _merge_pickup_value(kind, pos, value):
+			return
+		# 该类型尚不存在时（典型为 350 个宝石后的首颗心），先无损
+		# 压缩另一类型，腾出槽位再生成本次掉落。
+		var compact_kind := "heart" if kind == "gem" else "gem"
+		if not _compact_pickup_kind(compact_kind):
+			return
 	var g: Node = null
 	if _pickup_pool.size() > 0:
 		g = _pickup_pool.pop_back() as Node
-		g.visible = true
 	else:
 		g = PickupScript.new()
-	g.set("game", self)
-	g.set("kind", kind)
-	g.set("value", value)
-	g.set("magnet", false)
-	g.set("vel", Vector2.ZERO)
-	g.set("collected", false)
-	g.set("t", randf() * TAU)
-	g.position = pos
 	if g.get_parent():
 		g.get_parent().remove_child(g)
+	g.call("reset_for_spawn", self, kind, value, pos, PICKUP_LIFETIME)
 	pickups_node.add_child(g)
 
+
+func _expire_pickup(p: Node) -> void:
+	# 到期宝石先把 XP 并入其他宝石，避免长局中零散掉落白白消失。
+	if str(p.get("kind")) == "gem":
+		if not _merge_pickup_value("gem", (p as Node2D).position, int(p.get("value")), p):
+			# 最后一个宝石没有合并目标时续期；节点数量仍有硬上限，但 XP
+			# 不会仅因寿命到期而丢失。
+			p.set("life", PICKUP_LIFETIME)
+			return
+	_recycle_pickup(p)
+
+
 func _recycle_pickup(p: Node) -> void:
+	if not is_instance_valid(p) or _pickup_pool.has(p):
+		return
 	if p.get_parent():
 		p.get_parent().remove_child(p)
-	p.visible = false
+	p.set_process(false)
+	(p as CanvasItem).visible = false
 	_pickup_pool.append(p)
+
+
+func _safe_projectile_direction(direction: Vector2, fallback: Vector2 = Vector2.RIGHT) -> Vector2:
+	if direction.length_squared() > 0.000001:
+		return direction.normalized()
+	if fallback.length_squared() > 0.000001:
+		return fallback.normalized()
+	return Vector2.RIGHT
+
 
 func spawn_projectile(dir: Vector2, dmg: float, pierce: int, pos: Vector2) -> void:
 	var p: Node
@@ -517,49 +656,58 @@ func spawn_projectile(dir: Vector2, dmg: float, pierce: int, pos: Vector2) -> vo
 		p.visible = true
 	else:
 		p = ProjectileScript.new()
+	var shot_dir := _safe_projectile_direction(dir, player.facing if player else Vector2.RIGHT)
 	p.set("game", self)
-	p.set("dir", dir)
+	p.set("dir", shot_dir)
 	p.set("dmg", dmg)
 	p.set("pierce", pierce)
 	p.set("life", 1.5)
 	p.set("is_boomerang", false)
 	p.set("boomerang_t", 0.0)
+	p.set("boomerang_return", 0.45)
 	p.set("boomerang_has_returned", false)
 	(p.get("hit_ids") as Dictionary).clear()
 	p.position = pos
-	p.rotation = dir.angle()
+	p.rotation = shot_dir.angle()
 	if p.get_parent():
 		p.get_parent().remove_child(p)
 	projectiles_node.add_child(p)
+	(p as CanvasItem).queue_redraw()
 
 
-func spawn_boomerang(dir: Vector2, dmg: float, pierce: int, pos: Vector2, spd: float = 520.0) -> void:
+func spawn_boomerang(
+	dir: Vector2,
+	dmg: float,
+	pierce: int,
+	pos: Vector2,
+	spd: float = 520.0,
+	return_time: float = 0.45
+) -> void:
 	var p: Node
 	if _proj_pool.size() > 0:
 		p = _proj_pool.pop_back()
 		p.visible = true
 	else:
 		p = ProjectileScript.new()
+	var shot_dir := _safe_projectile_direction(dir, player.facing if player else Vector2.RIGHT)
+	var safe_return_time := maxf(return_time, 0.05)
 	p.set("game", self)
-	p.set("dir", dir)
+	p.set("dir", shot_dir)
 	p.set("dmg", dmg)
 	p.set("pierce", pierce)
 	p.set("speed", spd)
-	p.set("life", 1.65)
+	p.set("life", maxf(1.65, safe_return_time + 1.2))
 	p.set("is_boomerang", true)
 	p.set("boomerang_t", 0.0)
 	p.set("boomerang_has_returned", false)
-	# 从平衡中取 return_time，若无则 0.45
-	var rt: float = 0.45
-	# 尝试从当前 boomerang 等级中获取
-	# 调用方已传入速度，return_time 固定
-	p.set("boomerang_return", rt)
+	p.set("boomerang_return", safe_return_time)
 	(p.get("hit_ids") as Dictionary).clear()
 	p.position = pos
-	p.rotation = dir.angle()
+	p.rotation = shot_dir.angle()
 	if p.get_parent():
 		p.get_parent().remove_child(p)
 	projectiles_node.add_child(p)
+	(p as CanvasItem).queue_redraw()
 
 
 func spawn_frost_nova(pos: Vector2, rad: float, slow: float) -> void:
@@ -592,6 +740,7 @@ func _recycle_projectile(p: Node) -> void:
 	# 重置 boomerang 标记，避免池复用污染
 	p.set("is_boomerang", false)
 	p.set("boomerang_t", 0.0)
+	p.set("boomerang_return", 0.45)
 	p.set("boomerang_has_returned", false)
 	p.set("speed", 560.0)
 	_proj_pool.append(p)
@@ -770,6 +919,7 @@ func _win() -> void:
 	get_tree().paused = true
 	var stats: Dictionary = _collect_stats()
 	var newly: Array = SaveData.record_game(stats)
+	_recorded_stats_checkpoint = stats.duplicate(true)
 	menus.show_end(true, elapsed, kills, player.level, stats, newly)
 
 
@@ -786,7 +936,12 @@ func _lose() -> void:
 	shake = 12.0
 	spawn_burst(player.position, Color(0.4, 0.85, 1.0), 60)
 	var stats2: Dictionary = _collect_stats()
-	var newly2: Array = SaveData.record_game(stats2)
+	var newly2: Array
+	if _recorded_stats_checkpoint.is_empty():
+		newly2 = SaveData.record_game(stats2)
+	else:
+		# 胜利已记录过这局；无尽结算只延伸最佳成绩与增量统计。
+		newly2 = SaveData.extend_recorded_game(stats2, _recorded_stats_checkpoint)
 	menus.show_end(false, elapsed, kills, player.level, stats2, newly2)
 
 
@@ -811,7 +966,12 @@ func restart() -> void:
 			menus.hide_end()
 	pending_levels = 0
 	get_tree().paused = false
-	get_tree().reload_current_scene()
+	var tree := get_tree()
+	if tree.current_scene:
+		tree.reload_current_scene()
+	else:
+		# 测试可直接挂载场景实例，此时 current_scene 为 null。
+		tree.change_scene_to_file("res://scenes/game.tscn")
 
 
 func to_home() -> void:

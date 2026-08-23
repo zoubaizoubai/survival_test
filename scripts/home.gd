@@ -19,6 +19,10 @@ var fps_check: CheckBox
 var stats_label: Label
 var unlock_label: Label
 var music: Node
+var clear_save_button: Button
+var clear_confirm_layer: Control
+var clear_confirm_cancel_button: Button
+var clear_confirm_accept_button: Button
 
 
 func _ready() -> void:
@@ -336,30 +340,28 @@ func _build_settings_layer() -> void:
 	unlock_info.add_theme_font_size_override("font_size", 12)
 	unlock_info.add_theme_color_override("font_color", Color(UiStyle.INK.r, UiStyle.INK.g, UiStyle.INK.b, 0.8))
 	vbox.add_child(unlock_info)
-	var clear_btn := Button.new()
-	clear_btn.text = "清除存档"
-	clear_btn.custom_minimum_size = Vector2(160, 36)
-	clear_btn.focus_mode = Control.FOCUS_ALL
-	clear_btn.add_theme_font_size_override("font_size", 13)
-	clear_btn.add_theme_color_override("font_color", Color(0.72, 0.22, 0.18))
-	clear_btn.add_theme_color_override("font_hover_color", Color(0.85, 0.2, 0.16))
+	clear_save_button = Button.new()
+	clear_save_button.name = "ClearSaveButton"
+	clear_save_button.text = "清除存档"
+	clear_save_button.custom_minimum_size = Vector2(180, 44)
+	clear_save_button.focus_mode = Control.FOCUS_ALL
+	clear_save_button.add_theme_font_size_override("font_size", 14)
+	clear_save_button.add_theme_color_override("font_color", Color(0.72, 0.22, 0.18))
+	clear_save_button.add_theme_color_override("font_hover_color", Color(0.85, 0.2, 0.16))
 	var sb_clear := StyleBoxFlat.new()
 	sb_clear.bg_color = Color(0.95, 0.35, 0.35, 0.16)
 	sb_clear.set_corner_radius_all(10)
 	sb_clear.set_border_width_all(2)
 	sb_clear.border_color = Color(0.85, 0.32, 0.28, 0.7)
-	clear_btn.add_theme_stylebox_override("normal", sb_clear)
+	clear_save_button.add_theme_stylebox_override("normal", sb_clear)
 	var sb_clear_h: StyleBoxFlat = sb_clear.duplicate()
 	sb_clear_h.bg_color = Color(0.95, 0.35, 0.35, 0.28)
-	clear_btn.add_theme_stylebox_override("hover", sb_clear_h)
-	clear_btn.add_theme_stylebox_override("pressed", sb_clear)
-	clear_btn.pressed.connect(func():
-		SaveData.clear()
-		_refresh_stats_display()
-		_refresh_unlock_info()
-	)
+	clear_save_button.add_theme_stylebox_override("hover", sb_clear_h)
+	clear_save_button.add_theme_stylebox_override("focus", sb_clear_h)
+	clear_save_button.add_theme_stylebox_override("pressed", sb_clear)
+	clear_save_button.pressed.connect(_show_clear_confirmation)
 	var cc := CenterContainer.new()
-	cc.add_child(clear_btn)
+	cc.add_child(clear_save_button)
 	vbox.add_child(cc)
 	call_deferred("_refresh_unlock_info")
 	vbox.add_child(_make_separator())
@@ -401,6 +403,106 @@ func _build_settings_layer() -> void:
 		if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
 			_on_settings_back()
 	)
+	_build_clear_confirmation_layer()
+
+
+func _build_clear_confirmation_layer() -> void:
+	if clear_confirm_layer != null:
+		return
+	clear_confirm_layer = Control.new()
+	clear_confirm_layer.name = "ClearSaveConfirmation"
+	clear_confirm_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	clear_confirm_layer.visible = false
+	clear_confirm_layer.mouse_filter = Control.MOUSE_FILTER_STOP
+	settings_layer.add_child(clear_confirm_layer)
+	var dim := ColorRect.new()
+	dim.color = Color(0.02, 0.02, 0.04, 0.78)
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	clear_confirm_layer.add_child(dim)
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_PASS
+	clear_confirm_layer.add_child(center)
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(440, 0)
+	panel.add_theme_stylebox_override("panel", UiStyle.flat_panel())
+	center.add_child(panel)
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 14)
+	panel.add_child(vbox)
+	var title := Label.new()
+	title.text = "确认清除存档？"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 24)
+	title.add_theme_color_override("font_color", Color(0.72, 0.22, 0.18))
+	vbox.add_child(title)
+	var message := Label.new()
+	message.text = "最佳记录、累计统计和已解锁内容都会被删除。\n此操作无法撤销。"
+	message.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	message.custom_minimum_size = Vector2(380, 54)
+	message.add_theme_font_size_override("font_size", 15)
+	message.add_theme_color_override("font_color", UiStyle.INK)
+	vbox.add_child(message)
+	var btn_row := HBoxContainer.new()
+	btn_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	btn_row.add_theme_constant_override("separation", 14)
+	vbox.add_child(btn_row)
+	clear_confirm_cancel_button = Button.new()
+	clear_confirm_cancel_button.name = "CancelButton"
+	clear_confirm_cancel_button.text = "取消"
+	clear_confirm_cancel_button.custom_minimum_size = Vector2(150, 50)
+	clear_confirm_cancel_button.focus_mode = Control.FOCUS_ALL
+	clear_confirm_cancel_button.add_theme_font_size_override("font_size", 16)
+	clear_confirm_cancel_button.add_theme_color_override("font_color", UiStyle.INK)
+	clear_confirm_cancel_button.add_theme_color_override("font_hover_color", UiStyle.WOOD)
+	var cancel_normal: StyleBoxFlat = UiStyle.flat_button(false)
+	var cancel_hover: StyleBoxFlat = cancel_normal.duplicate()
+	cancel_hover.bg_color = Color.WHITE
+	clear_confirm_cancel_button.add_theme_stylebox_override("normal", cancel_normal)
+	clear_confirm_cancel_button.add_theme_stylebox_override("hover", cancel_hover)
+	clear_confirm_cancel_button.add_theme_stylebox_override("pressed", cancel_normal)
+	clear_confirm_cancel_button.add_theme_stylebox_override("focus", cancel_hover)
+	clear_confirm_cancel_button.pressed.connect(_hide_clear_confirmation)
+	btn_row.add_child(clear_confirm_cancel_button)
+	clear_confirm_accept_button = Button.new()
+	clear_confirm_accept_button.name = "ConfirmButton"
+	clear_confirm_accept_button.text = "确认清除"
+	clear_confirm_accept_button.custom_minimum_size = Vector2(150, 50)
+	clear_confirm_accept_button.focus_mode = Control.FOCUS_ALL
+	UiStyle.apply_button(clear_confirm_accept_button, true)
+	clear_confirm_accept_button.pressed.connect(_on_clear_save_confirmed)
+	btn_row.add_child(clear_confirm_accept_button)
+	# CenterContainer 覆盖整个视口并以 PASS 传递未处理输入，因此在模态
+	# 根节点接收遮罩点击；绑定背后的 sibling ColorRect 无法稳定收到事件。
+	clear_confirm_layer.gui_input.connect(func(ev: InputEvent):
+		if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
+			_hide_clear_confirmation()
+	)
+
+
+func _show_clear_confirmation() -> void:
+	if clear_confirm_layer == null:
+		_build_clear_confirmation_layer()
+	clear_confirm_layer.visible = true
+	clear_confirm_cancel_button.call_deferred("grab_focus")
+
+
+func _hide_clear_confirmation() -> void:
+	if clear_confirm_layer:
+		clear_confirm_layer.visible = false
+	if clear_save_button and clear_save_button.is_visible_in_tree():
+		clear_save_button.call_deferred("grab_focus")
+
+
+func _on_clear_save_confirmed() -> void:
+	if not SaveData.clear():
+		push_error("[Home] 清除存档失败")
+		return
+	_hide_clear_confirmation()
+	_refresh_stats_display()
+	_refresh_unlock_info()
 
 
 func _make_separator() -> ColorRect:
@@ -513,12 +615,17 @@ func _on_settings_pressed() -> void:
 
 
 func _on_settings_back() -> void:
-	_hide_settings()
+	if clear_confirm_layer and clear_confirm_layer.visible:
+		_hide_clear_confirmation()
+	else:
+		_hide_settings()
 
 
 func _show_settings() -> void:
 	if settings_layer == null:
 		_build_settings_layer()
+	if clear_confirm_layer:
+		clear_confirm_layer.visible = false
 	settings_layer.visible = true
 	_refresh_unlock_info()
 	# 同步最新值
@@ -534,6 +641,8 @@ func _show_settings() -> void:
 
 
 func _hide_settings() -> void:
+	if clear_confirm_layer:
+		clear_confirm_layer.visible = false
 	if settings_layer:
 		settings_layer.visible = false
 	var start_btn: Button = get_node_or_null("CenterContainer/VBoxContainer/StartButton") as Button
@@ -550,7 +659,11 @@ func _center(n: Control) -> CenterContainer:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if settings_layer and settings_layer.visible:
+	if clear_confirm_layer and clear_confirm_layer.visible:
+		if event.is_action_pressed("ui_cancel") or event.is_action_pressed("pause"):
+			_hide_clear_confirmation()
+			get_viewport().set_input_as_handled()
+	elif settings_layer and settings_layer.visible:
 		if event.is_action_pressed("ui_cancel") or event.is_action_pressed("pause"):
 			_hide_settings()
 			get_viewport().set_input_as_handled()

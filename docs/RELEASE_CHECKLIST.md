@@ -2,33 +2,36 @@
 
 ## 版本与文档
 
-- [ ] `VERSION` 与 `project.godot:config/version` 一致（如 `0.3.0`）
-- [ ] `CHANGELOG.md` 已补充本版变更与日期
-- [ ] `docs/BUILD.md` 中首发平台与最低环境准确
+- [ ] 当前发布版本为 `0.4.0`；`VERSION` 与 `project.godot:application/config/version` 一致。
+- [ ] `CHANGELOG.md` 已补充本版行为变更与日期。
+- [ ] `docs/BUILD.md` 中平台、产物与构建要求与当前预设一致。
 
 ## 自动化
 
-- [ ] CI 绿灯：`headless load`、`332 断言`、`export presets`、`Web export` 均通过
-- [ ] `tests/baseline.json` 已更新且 `avg_ms <8`、`p95 <8`（`caps <10`）
-- [ ] `make verify && make test` 本地可重复
+- [ ] CI 绿灯：无头加载、隔离测试、Web 导出、Linux 导出全部通过。
+- [ ] CI 中的导出失败会返回非零，不存在 `|| echo` 等吞错处理。
+- [ ] `make verify && make test && make export-all` 在安装模板的干净环境可重复执行。
+- [ ] `tests/baseline.json` 在同一机器/同一 Godot 版本下无明显回归；阈值以测试代码为准，不在文档复制固定数字。
 
-## 手动验收（1280×720 基准，触摸+鼠标+手柄）
+## 手动验收
 
-- [ ] **输入**：WASD/方向键、左摇杆、鼠标点击、触摸摇杆（左半屏 `x<0.35w && y>0.5h`）、`Pause`/`Start` 暂停/继续
-- [ ] **流程**：开始游戏 → 击杀 → 升级三选一无重复/治疗保底 → 暂停/继续 → 胜利 300s → 无尽 → 死亡 → 重开/回主页
-- [ ] **武器构筑**：dagger / orbit / lightning / aura / boomerang / frost 各可触发，进化（Lv8+被动满）出现且替换不占槽
-- [ ] **敌人**：slime/bat/brute/charger(cast 线预警)/caster(环预警)/elite/boss(血条+二阶段) 可辨识
-- [ ] **存档**：最佳时间/击杀跨启动保存；累计 40 击杀开回旋、90s 开寒霜；损坏 `user://progress.cfg` 回退；设置内清除存档有效
-- [ ] **音视**：Master/Music/Sfx 分别可调；音乐循环；震动/强闪烁可关闭且低血/受击反馈弱化；Boss 血条、在 1280×720 与 20:9 (1280×576) 下无裁切
-- [ ] **性能**：中端机 60FPS，170 敌人+350 拾取 95 分位 <0.4ms（实测 0.3ms）
+- [ ] **输入**：WASD/方向键、左摇杆、鼠标点击、触摸摇杆、`Pause`/`Start` 暂停与继续。
+- [ ] **流程**：开始游戏 → 击杀 → 升级三选一 → 暂停/继续 → 胜利 → 无尽 → 死亡 → 重开/回主页。
+- [ ] **武器构筑**：dagger / orbit / lightning / aura / boomerang / frost 均可触发，进化会正确替换基础武器。
+- [ ] **敌人**：slime / bat / brute / charger / caster / elite / boss 行为与预警可辨识。
+- [ ] **存档**：最佳记录与解锁可跨启动保存；损坏存档可回退；清档流程有明确确认。
+- [ ] **音视**：Master / Music / Sfx 可分别调节；震动与强闪烁开关生效；Boss 血条在基准视口与宽屏下无裁切。
+- [ ] **性能**：在实际目标设备/浏览器上采集帧率、帧时间与峰值场景；无头逻辑微基准不替代端到端性能验收。
 
-## 导出
+## 导出产物
 
-- [ ] `export_presets.cfg` 含 `Web` 与 `Linux/X11`，`export_path` 为 `build/web/index.html` / `build/linux/幸存者.x86_64`
-- [ ] `make export-web` 产物可在本地 `python -m http.server` 于浏览器验证可启动
-- [ ] 版本号与变更说明已随构建产物记录（如 `build/web/version.txt` 拷贝自 `VERSION`）
+- [ ] `export_presets.cfg` 的 Web/Linux 预设排除 `addons/**`、`build/**`、`tests/**`、`docs/**`、`tools/**`、`.agents/**`、`.codex/**`、`.beads/**` 与其他开发内容。
+- [ ] Web 包含非空的 `index.html`、`index.js`、`index.wasm`、`index.pck`、`version.txt`。
+- [ ] Linux 包含非空的 `幸存者.x86_64` 与 `version.txt`，并可在目标 Linux x86_64 环境启动。
+- [ ] 用临时 `--export-pack` 审计包内文件，确认没有测试、文档、代理配置或本机符号链接内容。
+- [ ] 本地 HTTP 服务器打开 Web 产物，确认能启动并完成一局。
 
 ## 发布
 
-- [ ] 打 tag `v0.3.0` 并推送
-- [ ] 产物上传至 itch.io / 静态托管，附 `BUILD.md` 链接与浏览器要求
+- [ ] 根据 `VERSION` 创建对应的 `v<version>` 标签并推送。
+- [ ] 只上传通过上述产物校验与手动验收的构建。

@@ -8,6 +8,7 @@ signal died
 const ProjectileScript := preload("res://scripts/projectile.gd")
 const Settings := preload("res://scripts/settings.gd")
 const SpriteLibrary := preload("res://scripts/sprite_library.gd")
+const GameData := preload("res://scripts/game_data.gd")
 
 const BASE_SPEED := 235.0
 const BASE_MAGNET := 95.0
@@ -29,11 +30,19 @@ var orbit_hits := {}
 var time_alive := 0.0
 var anim: AnimatedSprite2D
 var _attack_t := 0.0
+var base_speed := BASE_SPEED
+var base_magnet := BASE_MAGNET
+var base_hp := BASE_HP
 
 
 func _ready() -> void:
 	add_to_group("player")
-	max_hp = BASE_HP
+	GameData.ensure_loaded()
+	var player_balance: Dictionary = GameData.spawn.get("player", {}) as Dictionary
+	base_speed = maxf(float(player_balance.get("base_speed", BASE_SPEED)), 1.0)
+	base_magnet = maxf(float(player_balance.get("base_magnet", BASE_MAGNET)), 1.0)
+	base_hp = maxf(float(player_balance.get("base_hp", BASE_HP)), 1.0)
+	max_hp = base_hp
 	hp = max_hp
 	add_weapon("dagger")
 	anim = SpriteLibrary.make_sprite("player", 15.0)
@@ -72,11 +81,11 @@ func _move(delta: float) -> void:
 
 
 func speed() -> float:
-	return BASE_SPEED * (1.0 + 0.1 * passives.get("speed", 0))
+	return base_speed * (1.0 + 0.1 * passives.get("speed", 0))
 
 
 func magnet_radius() -> float:
-	return BASE_MAGNET * (1.0 + 0.45 * passives.get("magnet", 0))
+	return base_magnet * (1.0 + 0.45 * passives.get("magnet", 0))
 
 
 func damage_mult() -> float:
@@ -232,13 +241,16 @@ func _fire_boomerang(wid: String = "boomerang") -> bool:
 	var st := wstat(wid)
 	var n: int = int(st.get("count", 1))
 	var dir0: Vector2 = (target.global_position - global_position).normalized()
+	if dir0 == Vector2.ZERO:
+		dir0 = facing.normalized() if facing != Vector2.ZERO else Vector2.RIGHT
 	for i in n:
 		var spread := deg_to_rad(-10.0 * (n - 1) * 0.5 + 10.0 * i)
 		var d := dir0.rotated(spread)
 		var spd: float = float(st.get("speed", 450.0))
 		var pierce: int = int(st.get("pierce", 2))
 		var dmg: float = float(st.get("dmg", 16.0))
-		game.spawn_boomerang(d, dmg, pierce, position + d * 14.0, spd)
+		var return_time: float = float(st.get("return_time", 0.45))
+		game.spawn_boomerang(d, dmg, pierce, position + d * 14.0, spd, return_time)
 	game.sfx.play("shoot")
 	_play_attack()
 	return true

@@ -1,50 +1,81 @@
 # 构建说明
 
-## 首发平台
+## 版本与首发平台
 
-- **Web (HTML5)** — 最低环境：支持 WebGL2 / WebAssembly 的现代浏览器（Chrome ≥ 90, Firefox ≥ 90, Safari ≥ 15）。CI 首验证此平台。
-- **Linux/X11 x86_64** — 本地验证与桌面分发，需求 Godot 4.7 运行时。
+当前版本为 `0.4.0`。发布时以 `VERSION` 与 `project.godot:application/config/version` 的一致性为准，变更记录见 `CHANGELOG.md`。
 
-版本：`VERSION` 与 `project.godot:config/version` 均为 `0.3.0`，以 `CHANGELOG.md` 追踪。
+- **Web** — 需要支持 WebGL 2 与 WebAssembly 的现代浏览器。
+- **Linux/X11 x86_64** — 用于桌面分发与本地验证，PCK 嵌入可执行文件。
+
+发布预设会排除 `addons/`、`build/`、`tests/`、`docs/`、`tools/`、`.agents/`、`.codex/`、`.beads/` 与 CI 等开发内容，避免旧构建、本机符号链接或测试基线进入产物。
+
+## 先决条件
+
+- Godot `4.7.2` （项目兼容 Godot 4.7）
+- 已安装对应版本的 Web 与 Linux 导出模板
+
+导出模板可在编辑器中通过 `Editor → Manage Export Templates → Download` 安装；CI 使用 `chickensoft-games/setup-godot` 安装同版本模板。
 
 ## 干净克隆构建
 
 ```bash
 git clone <repo>
 cd 幸存者
-# 校验可加载
-make verify   # 或 godot --headless --path . --quit-after 2
-# 全量测试 + 性能基线（332 断言）
-make test     # 等价 godot --headless --path . -s res://tests/run_tests.gd -- seed=1337
-make perf     # 查看 tests/baseline.json
-# 导出
-make export-web   # 需已安装 Web 模板，产物 build/web/index.html
-make export-linux # 需已安装 Linux 模板，产物 build/linux/幸存者.x86_64
+
+# 校验项目可加载
+make verify
+
+# 隔离 user:// 的无头测试与逻辑性能基线
+make test
+make perf
+
+# 严格导出：缺模板、Godot 导出失败或产物不完整都会返回非零
+make export-web
+make export-linux
+# 或
 make export-all
 ```
 
-### 导出模板安装
+## 产物约定
 
-- 编辑器：`Editor → Manage Export Templates → Download`
-- 命令行：`godot --headless --install-export-templates` 或使用 `chickensoft-games/setup-godot` 的 `include-templates: true`
+Web 导出成功后，`build/web/` 至少包含：
 
-无模板时 `make export-*` 会提示缺模板但预设校验仍通过（CI 的 `Check export presets` 步骤）。
+- `index.html`
+- `index.js`
+- `index.wasm`
+- `index.pck`
+- `version.txt`
 
-## 版本与变更
+Linux 导出成功后，`build/linux/` 至少包含：
 
-- `VERSION` 文本与 `project.godot` 同步
-- `CHANGELOG.md` 按 `0.1.0 → 0.3.0` 记录功能
-- 发版前更新两者并打 tag：`git tag v0.3.0 && git push --tags`
+- `幸存者.x86_64`（已嵌入 PCK）
+- `version.txt`
+
+`make export-*` 会对上述文件做非空校验。任一文件缺失都视为构建失败，不会降级为警告。
+
+## 版本与标签
+
+发版前同步更新 `VERSION`、`project.godot` 与 `CHANGELOG.md`，再使用当前版本创建标签：
+
+```bash
+release_version="$(cat VERSION)"
+git tag "v${release_version}"
+git push --tags
+```
 
 ## CI
 
-见 `.github/workflows/ci.yml`：
+`.github/workflows/ci.yml` 执行：
 
-1. `godot --version`
-2. `headless --quit-after 2`
-3. `headless -s res://tests/run_tests.gd -- seed=1337`（332 断言）
-4. `export_presets.cfg` 存在性与 `Web` 预设检查
-5. `godot --export-release Web build/web/index.html`
-6. 上传 `baseline.json` 与 `build/web/` 产物
+1. 校验 Godot 版本并无头加载项目。
+2. 以 `isolated=true` 运行全量无头测试。
+3. 校验 Web/Linux 导出预设。
+4. 严格导出并校验 Web 四件套与 `version.txt`。
+5. 严格导出并校验 Linux 可执行文件与 `version.txt`。
+6. 只有导出成功才上传发布产物；测试基线仍可在失败时作为诊断信息上传。
 
-本地复现 CI：`make verify && make test && make export-web`
+本地复现 CI：
+
+```bash
+make verify && make test && make export-all
+```

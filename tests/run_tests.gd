@@ -3,6 +3,10 @@ extends SceneTree
 # 无头烟雾测试与性能基线入口
 # 运行: godot --headless --path . -s res://tests/run_tests.gd -- seed=1337
 # 可选参数: seed=INT, verbose=true|false, baseline_path=res://tests/baseline.json
+# 所有运行都会把 SaveData/Settings 重定向到本次进程专用文件，绝不读写生产 user://。
+
+const SaveDataRef := preload("res://scripts/save_data.gd")
+const SettingsRef := preload("res://scripts/settings.gd")
 
 var _seed: int = 1337
 var _verbose: bool = true
@@ -12,6 +16,8 @@ var _failed: int = 0
 var _failed_details: Array = []
 var _perf_results: Array = []
 var _start_msec: int = 0
+var _test_progress_path: String = ""
+var _test_settings_path: String = ""
 
 
 func _parse_args() -> void:
@@ -20,7 +26,7 @@ func _parse_args() -> void:
 		var arg: String = str(a).strip_edges()
 		if arg.begins_with("seed="):
 			_seed = int(arg.split("=")[1])
-		elif arg.begins_with("baseline="):
+		elif arg.begins_with("baseline=") or arg.begins_with("baseline_path="):
 			_baseline_path = arg.split("=")[1]
 		elif arg == "verbose" or arg == "verbose=true":
 			_verbose = true
@@ -28,9 +34,42 @@ func _parse_args() -> void:
 			_verbose = false
 
 
+func _configure_test_storage() -> bool:
+	var run_id: String = "%d_%d" % [OS.get_process_id(), Time.get_ticks_usec()]
+	_test_progress_path = "user://test_progress_%s.cfg" % run_id
+	_test_settings_path = "user://test_settings_%s.cfg" % run_id
+	var save_isolated: bool = SaveDataRef.set_test_storage_path(_test_progress_path)
+	var settings_isolated: bool = SettingsRef.set_test_storage_path(_test_settings_path)
+	var save_path_matches: bool = save_isolated and SaveDataRef.get_storage_path() == _test_progress_path
+	var settings_path_matches: bool = settings_isolated and SettingsRef.get_storage_path() == _test_settings_path
+	_assert(
+		save_path_matches,
+		"SaveData 使用隔离测试路径",
+		"SaveData 测试路径配置失败",
+	)
+	_assert(
+		settings_path_matches,
+		"Settings 使用隔离测试路径",
+		"Settings 测试路径配置失败",
+	)
+	return save_path_matches and settings_path_matches
+
+
+func _cleanup_test_storage() -> void:
+	# 进程退出前始终保持重定向生效；若这里切回生产路径，仍存活的场景
+	# 可能在最后一帧重新加载真实设置。静态状态会随测试进程销毁。
+	for path in [_test_progress_path, _test_settings_path]:
+		if path.is_empty() or not FileAccess.file_exists(path):
+			continue
+		var err: int = DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+		if err != OK:
+			_log_fail("隔离测试文件清理失败", "%s err=%d" % [path, err])
+
+
 func _log_pass(msg: String) -> void:
 	_passed += 1
-	print("[PASS] %s" % msg)
+	if _verbose:
+		print("[PASS] %s" % msg)
 
 
 func _log_fail(msg: String, detail: String = "") -> void:
@@ -73,6 +112,12 @@ func _count_total_nodes() -> int:
 
 func _initialize() -> void:
 	_parse_args()
+	if not _configure_test_storage():
+		# 隔离失败时绝不能继续执行，否则测试可能读写真实玩家数据。
+		_cleanup_test_storage()
+		_print_summary()
+		quit(1)
+		return
 	_start_msec = Time.get_ticks_msec()
 	seed(_seed)
 	print("==================================================")
@@ -82,6 +127,7 @@ func _initialize() -> void:
 	await process_frame
 	await process_frame
 	await _run_all()
+	_cleanup_test_storage()
 	_write_baseline()
 	_print_summary()
 	# 清理后退出，使用非零码标识失败
@@ -205,6 +251,31 @@ func _test_game_load() -> void:
 	_assert(g.get("MAX_ENEMIES") == 170, "MAX_ENEMIES 为 170", "MAX_ENEMIES=%s" % str(g.get("MAX_ENEMIES")))
 	_assert(g.get("GOAL_TIME") == 300.0, "GOAL_TIME 为 300", "GOAL_TIME=%s" % str(g.get("GOAL_TIME")))
 	_assert(g.get("ARENA") == 2600.0, "ARENA 为 2600", "ARENA=%s" % str(g.get("ARENA")))
+	# 玩家基础属性与弹道关键参数必须真正来自平衡表，而非仅存在于 JSON。
+	var gd: GDScript = preload("res://scripts/game_data.gd")
+	var player_balance: Dictionary = gd.spawn.get("player", {}) as Dictionary
+	var player: Node = g.get("player") as Node
+	_assert(is_equal_approx(float(player.get("base_speed")), float(player_balance.get("base_speed"))), "玩家基础速度接入平衡表", "player=%s data=%s" % [str(player.get("base_speed")), str(player_balance)])
+	_assert(is_equal_approx(float(player.get("base_magnet")), float(player_balance.get("base_magnet"))), "玩家磁吸半径接入平衡表", "player=%s data=%s" % [str(player.get("base_magnet")), str(player_balance)])
+	_assert(is_equal_approx(float(player.get("max_hp")), float(player_balance.get("base_hp"))), "玩家基础生命接入平衡表", "player=%s data=%s" % [str(player.get("max_hp")), str(player_balance)])
+	var projectiles: Node = g.get("projectiles_node") as Node
+	g.spawn_projectile(Vector2.ZERO, 1.0, 1, Vector2.ZERO)
+	var safe_projectile: Node = projectiles.get_child(projectiles.get_child_count() - 1) as Node
+	_assert(is_equal_approx((safe_projectile.get("dir") as Vector2).length(), 1.0), "零方向普通弹道使用安全方向", "dir=%s" % str(safe_projectile.get("dir")))
+	g._recycle_projectile(safe_projectile)
+	g.spawn_boomerang(Vector2.ZERO, 1.0, 1, Vector2.ZERO, 500.0, 0.73)
+	var boomerang: Node = projectiles.get_child(projectiles.get_child_count() - 1) as Node
+	_assert(is_equal_approx(float(boomerang.get("boomerang_return")), 0.73), "回旋斧 return_time 接入弹道", "actual=%s" % str(boomerang.get("boomerang_return")))
+	_assert(is_equal_approx((boomerang.get("dir") as Vector2).length(), 1.0), "零方向回旋斧使用安全方向", "dir=%s" % str(boomerang.get("dir")))
+	g._recycle_projectile(boomerang)
+	g._spawn_at("slime", Vector2(100.0, 0.0))
+	var swept_enemy: Node = (g.get("enemies_node") as Node).get_child(0) as Node
+	var swept_hp_before: float = float(swept_enemy.get("hp"))
+	g.spawn_projectile(Vector2.RIGHT, 10.0, 1, Vector2.ZERO)
+	var swept_projectile: Node = projectiles.get_child(projectiles.get_child_count() - 1) as Node
+	swept_projectile.set("speed", 10000.0)
+	swept_projectile._process(0.02)
+	_assert(float(swept_enemy.get("hp")) < swept_hp_before, "高速弹道线段碰撞不穿敌", "hp before=%.1f after=%.1f" % [swept_hp_before, float(swept_enemy.get("hp"))])
 	# 清理
 	var tree_ref: SceneTree = g.get_tree()
 	tree_ref.paused = false
@@ -357,6 +428,7 @@ func _test_victory_flow() -> void:
 	await process_frame
 	await process_frame
 	var menus: Control = g.get("menus") as Control
+	var totals_before: Dictionary = SaveDataRef.get_totals()
 	_assert(g.get("ended") == false, "胜利测试初始未结束", "ended=true")
 	# 模拟时间到达 GOAL_TIME
 	var goal: float = float(g.get("GOAL_TIME"))
@@ -368,6 +440,8 @@ func _test_victory_flow() -> void:
 	_assert(menus.get("end_layer").visible == true, "胜利后 end_layer 可见", "隐藏")
 	_assert(str(menus.get("end_title").text).contains("胜") and str(menus.get("end_title").text).contains("利"), "胜利标题包含 '胜'/'利'", "标题=%s" % str(menus.get("end_title").text))
 	_assert(menus.get("endless_btn").visible == true, "胜利时 endless 按钮可见", "隐藏")
+	var totals_after_win: Dictionary = SaveDataRef.get_totals()
+	_assert(int(totals_after_win["total_games"]) == int(totals_before["total_games"]) + 1, "胜利结算只增加一局", "before=%s after=%s" % [str(totals_before), str(totals_after_win)])
 	# 继续无尽模式
 	g.continue_endless()
 	await process_frame
@@ -380,6 +454,19 @@ func _test_victory_flow() -> void:
 	g._process(0.1)
 	await process_frame
 	_assert(g.get("ended") == false, "无尽模式下不再触发胜利", "错误触发")
+	# 无尽阶段死亡应延伸同一局，而不是把胜利局再次累计。
+	g.set("kills", 7)
+	g.set("total_damage", 25.0)
+	var player: Node = g.get("player") as Node
+	player.set("invuln", 0.0)
+	player.hurt(9999.0)
+	await process_frame
+	await process_frame
+	_assert(g.get("ended") == true, "无尽死亡进入结算", "ended=false")
+	var totals_after_endless: Dictionary = SaveDataRef.get_totals()
+	_assert(int(totals_after_endless["total_games"]) == int(totals_after_win["total_games"]), "胜利转无尽死亡不重复计局数", "win=%s endless=%s" % [str(totals_after_win), str(totals_after_endless)])
+	_assert(int(totals_after_endless["total_kills"]) == int(totals_after_win["total_kills"]) + 7, "无尽结算只追加 checkpoint 后击杀", "win=%s endless=%s" % [str(totals_after_win), str(totals_after_endless)])
+	_assert(is_equal_approx(float(totals_after_endless["total_damage"]), float(totals_after_win["total_damage"]) + 25.0), "无尽结算只追加 checkpoint 后伤害", "win=%s endless=%s" % [str(totals_after_win), str(totals_after_endless)])
 	# 清理
 	g.get_tree().paused = false
 	g.queue_free()
@@ -542,10 +629,31 @@ func _test_perf_scenarios() -> void:
 	var cap_result: Dictionary = await _run_perf_caps()
 	_perf_results.append(cap_result)
 	print("  [PERF] caps enemies=%d pickups=%d nodes=%d avg_ms=%.3f p95=%.3f" % [cap_result["enemies"], cap_result["pickups"], cap_result["total_nodes"], cap_result["avg_ms"], cap_result["p95_ms"]])
-	_assert(cap_result["enemies"] >= 170 and cap_result["enemies"] <= 172, "敌人上限 170-172（含Boss）", "enemies=%d" % cap_result["enemies"])
-	_assert(cap_result["pickups"] <= 355, "掉落物上限约 350", "pickups=%d" % cap_result["pickups"])
+	_assert(cap_result["enemies"] == 170, "敌人总上限严格为 170（含特殊槽）", "enemies=%d" % cap_result["enemies"])
+	_assert(cap_result["pickups"] == 350, "掉落物总上限严格为 350", "pickups=%d" % cap_result["pickups"])
 	_assert(cap_result["avg_ms"] < 10.0, "上限场景平均 <10ms (%.3fms)" % cap_result["avg_ms"], "平均过高")
 	_assert(cap_result["p95_ms"] < 10.0, "上限场景 95分位 <10ms (%.3fms)" % cap_result["p95_ms"], "95分位过高")
+
+
+func _run_perf_frame(g: Node, dt: float) -> void:
+	# 这是确定性逻辑微基准，不含 GPU；覆盖所有主要逐帧脚本，避免只测
+	# Game/Enemy/Player 却漏掉 350 个 Pickup、HUD 与 FX。
+	g._process(dt)
+	for e in (g.get("enemies_node") as Node).get_children():
+		if is_instance_valid(e) and e.get_parent() != null:
+			e._process(dt)
+	var player_node: Node = g.get("player") as Node
+	player_node._process(dt)
+	for p in (g.get("projectiles_node") as Node).get_children():
+		if is_instance_valid(p) and p.get_parent() != null:
+			p._process(dt)
+	for pickup in (g.get("pickups_node") as Node).get_children():
+		if is_instance_valid(pickup) and pickup.get_parent() != null:
+			pickup._process(dt)
+	for fx in (g.get("fx_node") as Node).get_children():
+		if is_instance_valid(fx) and fx.get_parent() != null and fx.has_method("_process"):
+			fx._process(dt)
+	(g.get("hud") as Node)._process(dt)
 
 
 func _run_perf_one(elapsed_val: float, seed_val: int) -> Dictionary:
@@ -556,8 +664,12 @@ func _run_perf_one(elapsed_val: float, seed_val: int) -> Dictionary:
 	await process_frame
 	await process_frame
 	g.set("elapsed", elapsed_val)
+	g.set("endless", true)
 	g.set("spawn_t", 9999.0)
 	g.set("elite_t", 9999.0)
+	g.set("_wave_idx", (g.get("_wave_cache") as Array).size())
+	g.set("boss_idx", 9999)
+	(g.get("player") as Node).set("invuln", 99999.0)
 	# 清理初始可能生成的敌人？游戏初始没有敌人，spawn_t 需等待
 	# 填满至 MAX_ENEMIES
 	var enemies_node_ref: Node = g.get("enemies_node") as Node
@@ -568,9 +680,17 @@ func _run_perf_one(elapsed_val: float, seed_val: int) -> Dictionary:
 		var kind: String = g._pick_kind()
 		var pos: Vector2 = g._spawn_pos()
 		g._spawn_at(kind, pos)
-	# 填掉落物至接近上限（使用子节点数避免 group 延迟）
+	# 普通敌人会为 elite/boss 保留两个槽；补齐特殊敌人后再测完整上限。
+	g._spawn_at("elite", g._spawn_pos())
+	g._spawn_at("boss", g._spawn_pos())
+	# 填满掉落物上限，固定在玩家吸附范围外，保证测量期间
+	# 始终承受 350 个活跃掉落物节点的负载。
 	for i in 360:
-		g._spawn_pickup("gem", Vector2(randf_range(-1200, 1200), randf_range(-800, 800)), 1)
+		var pickup_pos := Vector2(
+			700.0 + float(i % 25) * 12.0,
+			700.0 + float(i / 25) * 12.0,
+		)
+		g._spawn_pickup("gem", pickup_pos, 1)
 		if pickups_node_ref.get_child_count() >= 350:
 			break
 	await process_frame
@@ -579,7 +699,8 @@ func _run_perf_one(elapsed_val: float, seed_val: int) -> Dictionary:
 	g.set("spawn_t", 9999.0)
 	g.set("elite_t", 9999.0)
 	var enemies: int = int(g._live_count())
-	var pickups: int = int(g.get_tree().get_nodes_in_group("pickup").size())
+	var pickups_before_measure: int = pickups_node_ref.get_child_count()
+	_assert(pickups_before_measure == int(g.get("MAX_PICKUPS")), "性能场景填满掉落物节点上限", "count=%d" % pickups_before_measure)
 	var total_nodes: int = _count_total_nodes()
 	var object_count: float = Performance.get_monitor(Performance.OBJECT_COUNT)
 	var object_nodes: float = Performance.get_monitor(Performance.OBJECT_NODE_COUNT)
@@ -591,15 +712,7 @@ func _run_perf_one(elapsed_val: float, seed_val: int) -> Dictionary:
 	var t0: int = Time.get_ticks_usec()
 	for iter in iterations:
 		var s0: int = Time.get_ticks_usec()
-		g._process(dt)
-		var enemies_node: Node = g.get("enemies_node") as Node
-		for e in enemies_node.get_children():
-			e._process(dt)
-		var player_node: Node = g.get("player") as Node
-		player_node._process(dt)
-		var proj_node: Node = g.get("projectiles_node") as Node
-		for p in proj_node.get_children():
-			p._process(dt)
+		_run_perf_frame(g, dt)
 		var s1: int = Time.get_ticks_usec()
 		samples[iter] = float(s1 - s0) / 1000.0
 	var t1: int = Time.get_ticks_usec()
@@ -607,10 +720,12 @@ func _run_perf_one(elapsed_val: float, seed_val: int) -> Dictionary:
 	samples.sort()
 	var p95_ms: float = float(samples[int(iterations * 0.95)])
 	var p50_ms: float = float(samples[int(iterations * 0.5)])
+	var pickups_after_measure: int = pickups_node_ref.get_child_count()
+	_assert(pickups_after_measure == pickups_before_measure, "性能测量期间掉落物节点保持满额", "before=%d after=%d" % [pickups_before_measure, pickups_after_measure])
 	var result: Dictionary = {
 		"elapsed": elapsed_val,
 		"enemies": enemies,
-		"pickups": pickups,
+		"pickups": pickups_after_measure,
 		"total_nodes": total_nodes,
 		"object_count": int(object_count),
 		"object_nodes": int(object_nodes),
@@ -619,7 +734,9 @@ func _run_perf_one(elapsed_val: float, seed_val: int) -> Dictionary:
 		"p50_ms": p50_ms,
 		"seed": seed_val,
 		"iterations": iterations,
+		"ended": bool(g.get("ended")),
 	}
+	_assert(not bool(result["ended"]), "elapsed %.0fs 性能场景保持运行" % elapsed_val, "性能场景错误进入结束状态")
 	g.queue_free()
 	await process_frame
 	# 清理掉落物等残留（若 queue_free 未立即清理）
@@ -635,33 +752,62 @@ func _run_perf_caps() -> Dictionary:
 	await process_frame
 	await process_frame
 	g.set("elapsed", 250.0)
+	g.set("endless", true)
 	g.set("spawn_t", 9999.0)
 	g.set("elite_t", 9999.0)
+	g.set("_wave_idx", (g.get("_wave_cache") as Array).size())
+	g.set("boss_idx", 9999)
+	(g.get("player") as Node).set("invuln", 99999.0)
 	var enemies_node_ref2: Node = g.get("enemies_node") as Node
-	# 强制填满敌人（使用子节点数避免 group 延迟）
+	# 先填满普通敌人配额，再验证 elite/boss 各自唯一且共用总上限。
 	for i in 300:
-		if enemies_node_ref2.get_child_count() >= int(g.get("MAX_ENEMIES")):
+		if enemies_node_ref2.get_child_count() >= int(g.get("MAX_ENEMIES")) - 2:
 			break
 		g._spawn_at("brute", g._spawn_pos())
 	await process_frame
+	_assert(int(g._live_count()) == int(g.get("MAX_ENEMIES")) - 2, "普通敌人保留 2 个特殊槽", "count=%d" % int(g._live_count()))
+	var elite_spawned: bool = g._spawn_at("elite", g._spawn_pos())
+	var after_elite: int = int(g._live_count())
+	var duplicate_elite: bool = g._spawn_at("elite", g._spawn_pos())
+	_assert(elite_spawned and not duplicate_elite and int(g._live_count()) == after_elite, "elite 单实例限制生效", "spawned=%s duplicate=%s count=%d" % [str(elite_spawned), str(duplicate_elite), int(g._live_count())])
+	var boss_spawned: bool = g._spawn_at("boss", g._spawn_pos())
+	_assert(boss_spawned and int(g._live_count()) == int(g.get("MAX_ENEMIES")), "boss 填满最后特殊槽", "spawned=%s count=%d" % [str(boss_spawned), int(g._live_count())])
 	var before: int = int(g._live_count())
 	# 尝试通过 _spawn_one 超越上限（应被限制）
 	for i in 10:
 		g._spawn_one()
 	var after: int = int(g._live_count())
-	_assert(before == after and before >= 170 and before <= 172, "超越上限时敌人数量保持 170-172（含Boss）", "before=%d after=%d" % [before, after])
+	_assert(before == after and before == int(g.get("MAX_ENEMIES")), "超越上限时敌人数量严格不变", "before=%d after=%d" % [before, after])
 	var pickups_node_ref2: Node = g.get("pickups_node") as Node
 	# 填满掉落物
 	for i in 500:
 		if pickups_node_ref2.get_child_count() >= 350:
 			break
-		g._spawn_pickup("gem", Vector2(randf_range(-1000,1000), randf_range(-1000,1000)), 1)
+		g._spawn_pickup("gem", Vector2(1000.0, 1000.0), 1)
 	await process_frame
 	var pick_before: int = int(g.get_tree().get_nodes_in_group("pickup").size())
+	var xp_before: int = 0
+	for pickup in pickups_node_ref2.get_children():
+		if str(pickup.get("kind")) == "gem":
+			xp_before += int(pickup.get("value"))
 	for i in 20:
 		g._spawn_pickup("gem", Vector2.ZERO, 1)
 	var pick_after: int = int(g.get_tree().get_nodes_in_group("pickup").size())
-	_assert(pick_after == pick_before or pick_after == pick_before + 1, "超越上限时掉落物数量不变或仅+1（>350判定）", "before=%d after=%d" % [pick_before, pick_after])
+	var xp_after: int = 0
+	for pickup in pickups_node_ref2.get_children():
+		if str(pickup.get("kind")) == "gem":
+			xp_after += int(pickup.get("value"))
+	_assert(pick_before == 350 and pick_after == pick_before, "超越上限时掉落物数量严格不变", "before=%d after=%d" % [pick_before, pick_after])
+	_assert(xp_after == xp_before + 20, "掉落物满额时合并 XP 不丢失", "before=%d after=%d" % [xp_before, xp_after])
+	g._spawn_pickup("heart", Vector2(1000.0, 1000.0), 30)
+	var xp_after_heart: int = 0
+	var heart_after_cap: int = 0
+	for pickup in pickups_node_ref2.get_children():
+		if str(pickup.get("kind")) == "gem":
+			xp_after_heart += int(pickup.get("value"))
+		elif str(pickup.get("kind")) == "heart":
+			heart_after_cap += int(pickup.get("value"))
+	_assert(pickups_node_ref2.get_child_count() == 350 and xp_after_heart == xp_after and heart_after_cap == 30, "350 宝石满额后首颗心无损腾槽", "count=%d xp=%d heart=%d" % [pickups_node_ref2.get_child_count(), xp_after_heart, heart_after_cap])
 	await process_frame
 	# 禁止自动刷怪
 	g.set("spawn_t", 9999.0)
@@ -673,21 +819,20 @@ func _run_perf_caps() -> Dictionary:
 	var t0: int = Time.get_ticks_usec()
 	for iter in 200:
 		var s0: int = Time.get_ticks_usec()
-		g._process(0.016)
-		for e in (g.get("enemies_node") as Node).get_children():
-			e._process(0.016)
-		(g.get("player") as Node)._process(0.016)
+		_run_perf_frame(g, 0.016)
 		var s1: int = Time.get_ticks_usec()
 		samples2[iter] = float(s1 - s0) / 1000.0
 	var t1: int = Time.get_ticks_usec()
 	var avg_ms: float = float(t1 - t0) / 200.0 / 1000.0
 	samples2.sort()
 	var p95_ms: float = float(samples2[int(200 * 0.95)])
+	var pickups_for_result: int = pickups_node_ref2.get_child_count()
+	_assert(pickups_for_result == int(g.get("MAX_PICKUPS")), "上限性能测量期间掉落物节点保持满额", "count=%d" % pickups_for_result)
 	var result: Dictionary = {
 		"elapsed": 999.0,
 		"label": "caps",
 		"enemies": enemies_for_result,
-		"pickups": pick_before,
+		"pickups": pickups_for_result,
 		"total_nodes": total_nodes,
 		"object_count": int(Performance.get_monitor(Performance.OBJECT_COUNT)),
 		"avg_ms": avg_ms,
@@ -726,6 +871,25 @@ func _test_settings_input_responsive() -> void:
 		# 通过成员变量检查
 		_assert(home.get("volume_slider") != null, "音量滑块存在", "null")
 		_assert(home.get("shake_check") != null, "震动选项存在", "null")
+		# 清档必须先展示二次确认，取消时不改变任何统计。
+		var clear_button: Button = home.get("clear_save_button") as Button
+		var clear_layer: Control = home.get("clear_confirm_layer") as Control
+		var clear_cancel: Button = home.get("clear_confirm_cancel_button") as Button
+		var clear_accept: Button = home.get("clear_confirm_accept_button") as Button
+		_assert(clear_button != null and clear_button.custom_minimum_size.y >= 44.0, "清档入口满足触控尺寸", "button=%s" % str(clear_button))
+		_assert(clear_layer != null and not clear_layer.visible, "清档确认层初始隐藏", "确认层异常可见")
+		var totals_before_cancel: Dictionary = SaveDataRef.get_totals()
+		if clear_button and clear_layer:
+			clear_button.pressed.emit()
+			await process_frame
+			_assert(clear_layer.visible, "点击清档仅展示二次确认", "确认层未显示")
+			_assert(clear_cancel != null and clear_cancel.custom_minimum_size.y >= 44.0, "清档取消按钮满足触控尺寸", "cancel=%s" % str(clear_cancel))
+			_assert(clear_accept != null and clear_accept.custom_minimum_size.y >= 44.0, "清档确认按钮满足触控尺寸", "accept=%s" % str(clear_accept))
+			_assert(home.get_viewport().gui_get_focus_owner() == clear_cancel, "清档确认默认焦点为取消", "focus=%s" % str(home.get_viewport().gui_get_focus_owner()))
+			clear_cancel.pressed.emit()
+			await process_frame
+			_assert(not clear_layer.visible, "取消清档后关闭确认层", "确认层仍可见")
+			_assert(SaveDataRef.get_totals() == totals_before_cancel, "取消清档不修改统计", "before=%s after=%s" % [str(totals_before_cancel), str(SaveDataRef.get_totals())])
 		# 测试持久化：改值保存再加载
 		var SettingsRef: GDScript = preload("res://scripts/settings.gd")
 		SettingsRef.ensure_loaded()
@@ -769,20 +933,38 @@ func _test_settings_input_responsive() -> void:
 	await process_frame
 	var hud: Control = g.get("hud") as Control
 	var menus: Control = g.get("menus") as Control
-	for size in [Vector2(1280, 720), Vector2(1280, 576), Vector2(2560, 1152)]:
-		# 模拟视口尺寸
-		var vp: Window = root
-		# 在 headless 下直接设置大小并触发 _update_layout
-		# 注意：设置 viewport.size 可能在 headless 受限，改用直接调用布局方法
+	var vp: Window = root
+	var original_size: Vector2i = vp.size
+	for size in [Vector2i(1280, 720), Vector2i(1280, 576), Vector2i(2560, 1152)]:
+		# 真正调整 root Window；只传一个假 size 给断言无法覆盖响应式布局。
+		vp.size = size
+		await process_frame
 		hud._update_layout()
 		menus._update_layout()
 		home._on_viewport_resized()
+		var actual_size: Vector2 = g.get_viewport_rect().size
+		_assert(
+			vp.size == size,
+			"窗口实际切换至 %dx%d" % [size.x, size.y],
+			"窗口尺寸未切换",
+			"expected=%s actual=%s" % [str(size), str(vp.size)],
+		)
+		# canvas_items + expand 会把 20:9 窗口映射为 1600x720 的逻辑
+		# 视口；逻辑尺寸无需等于物理窗口，但宽高比必须一致且不裁剪基准画布。
+		_assert(
+			is_equal_approx(actual_size.x / actual_size.y, float(size.x) / float(size.y))
+				and actual_size.x >= 1280.0
+				and actual_size.y >= 720.0,
+			"%dx%d 窗口的逻辑视口比例正确" % [size.x, size.y],
+			"逻辑视口比例或范围错误",
+			"window=%s viewport=%s" % [str(size), str(actual_size)],
+		)
 		# 简易检查：HUD 元素在视口内且不重叠关键区
 		var hp_bg: Control = hud.get_node_or_null("HpBg") as Control
 		var pause_btn: Button = hud.get_node_or_null("PauseBtn") as Button
 		if hp_bg and pause_btn:
-			var hp_rect: Rect2 = Rect2(hp_bg.position, hp_bg.size)
-			var pause_rect: Rect2 = Rect2(pause_btn.position if pause_btn.position != Vector2.ZERO else Vector2(size.x - 56, 12), pause_btn.size)
+			var hp_rect: Rect2 = hp_bg.get_global_rect()
+			var pause_rect: Rect2 = pause_btn.get_global_rect()
 			# 使用锚点布局时，hp_bg 位于左上，pause 在右上，不应重叠
 			_assert(not hp_rect.intersects(pause_rect), "HUD 在 %dx%d 下无重叠" % [int(size.x), int(size.y)], "hp %s pause %s" % [str(hp_rect), str(pause_rect)])
 		# 升级卡片在窄高屏下应缩小
@@ -797,6 +979,8 @@ func _test_settings_input_responsive() -> void:
 			var cards: Array = g._roll_cards()
 			g._on_card_chosen(cards[0])
 			await process_frame
+	vp.size = original_size
+	await process_frame
 	print("  响应式校验在 3 种尺寸下完成")
 	g.queue_free()
 	home.queue_free()
@@ -1306,7 +1490,7 @@ func _test_stats_and_save() -> void:
 	if not newly2.is_empty():
 		_assert(end_text.contains("解锁"), "结算含解锁提示", "text=%s" % end_text)
 	# 5. 存档损坏回退：写入非法内容后 ensure_loaded 应回退默认值而不崩溃
-	var cfg_path: String = "user://progress.cfg"
+	var cfg_path: String = SaveDataRef.get_storage_path()
 	# 备份原文件
 	var orig_text: String = ""
 	if FileAccess.file_exists(cfg_path):
@@ -1335,7 +1519,35 @@ func _test_stats_and_save() -> void:
 			DirAccess.remove_absolute(ProjectSettings.globalize_path(cfg_path))
 	SaveDataRef._loaded = false
 	SaveDataRef.ensure_loaded()
-	# 6. 清除存档入口：clear 后最佳与解锁重置，且再次持久化
+	# 6. 未来版本存档只读：加载或尝试记账都不能降写并丢未知字段。
+	var future_cfg := ConfigFile.new()
+	future_cfg.set_value("save", "version", SaveDataRef.VERSION + 1)
+	future_cfg.set_value("save", "best_time", 321.0)
+	future_cfg.set_value("save", "future_metric", {"keep": true})
+	future_cfg.set_value("future", "payload", "preserve-me")
+	_assert(future_cfg.save(cfg_path) == OK, "可创建未来版本隔离存档", "save failed")
+	var future_before: String = ""
+	var future_before_file: FileAccess = FileAccess.open(cfg_path, FileAccess.READ)
+	if future_before_file:
+		future_before = future_before_file.get_as_text()
+		future_before_file.close()
+	SaveDataRef._loaded = false
+	SaveDataRef.ensure_loaded()
+	_assert(is_equal_approx(float(SaveDataRef.get_best()["time"]), 321.0), "未来版本可只读已知字段", "best=%s" % str(SaveDataRef.get_best()))
+	SaveDataRef.record_game({"time": 999.0, "kills": 999, "level": 99, "damage": 999.0})
+	var future_after: String = ""
+	var future_after_file: FileAccess = FileAccess.open(cfg_path, FileAccess.READ)
+	if future_after_file:
+		future_after = future_after_file.get_as_text()
+		future_after_file.close()
+	_assert(not future_before.is_empty() and future_after == future_before and future_after.contains("preserve-me"), "未来版本存档不会被旧版降写", "before=%s after=%s" % [future_before, future_after])
+	var restored_file: FileAccess = FileAccess.open(cfg_path, FileAccess.WRITE)
+	if restored_file:
+		restored_file.store_string(orig_text)
+		restored_file.close()
+	SaveDataRef._loaded = false
+	SaveDataRef.ensure_loaded()
+	# 7. 清除存档入口：clear 后最佳与解锁重置，且再次持久化
 	SaveDataRef.clear()
 	await process_frame
 	var best_cleared: Dictionary = SaveDataRef.get_best()
@@ -1480,15 +1692,12 @@ func _test_visual_audio_accessibility() -> void:
 	g.shake = 6.0
 	g._process(0.02)
 	_assert(g.cam.offset != Vector2.ZERO, "开启震动后相机偏移", "offset=%s" % str(g.cam.offset))
-	# 升级辨识度：卡片 tag 含 Lv/进化，颜色区分
-	var cards: Array = g._roll_cards()
-	var has_lv_or_evo: bool = false
-	for c in cards:
-		var info: Dictionary = (g.get("menus") as Control)._card_info(c)
-		if str(info["tag"]).contains("Lv") or str(info["tag"]).contains("进化"):
-			has_lv_or_evo = true
-			break
-	_assert(has_lv_or_evo, "升级卡 tag 含 Lv/进化辨识度", "cards=%s" % str(cards))
+	# 升级辨识度使用确定性的已拥有武器升级卡，避免随机三张恰好全是新被动。
+	var level_info: Dictionary = (g.get("menus") as Control)._card_info({
+		"kind": "weapon_up",
+		"id": "dagger",
+	})
+	_assert(str(level_info["tag"]).contains("Lv"), "升级卡 tag 含 Lv 辨识度", "info=%s" % str(level_info))
 	# 恢复设置
 	SettingsRef.set_flash_enabled(true)
 	SettingsRef.set_shake_enabled(true)
@@ -1538,6 +1747,8 @@ func _test_export_and_version() -> void:
 		ec.close()
 		has_web = txt3.contains('name="Web"') and txt3.contains('platform="Web"')
 		has_linux = txt3.contains('name="Linux/X11"')
+		_assert(txt3.contains("addons/**") and txt3.contains("tests/**") and txt3.contains("build/**") and txt3.contains(".agents/**"), "导出预设排除开发与构建目录", "exclude_filter 不完整")
+		_assert(txt3.contains("binary_format/embed_pck=true"), "Linux 产物嵌入 PCK", "embed_pck 未启用")
 	_assert(has_web, "Web 首发预设存在", "缺失 Web")
 	_assert(has_linux, "Linux 预设存在（本地验证）", "缺失 Linux")
 	# CI：.github/workflows/ci.yml 自动执行无头测试并校验导出
@@ -1547,7 +1758,14 @@ func _test_export_and_version() -> void:
 	if ci_file != null:
 		var citxt: String = ci_file.get_as_text()
 		ci_file.close()
-		ci_ok = citxt.contains("run_tests.gd") and citxt.contains("export_presets.cfg") and citxt.contains("export-release")
+		ci_ok = (
+			citxt.contains("run_tests.gd")
+			and citxt.contains("isolated=true")
+			and citxt.contains("make export-web")
+			and citxt.contains("make export-linux")
+			and citxt.contains("test -s build/web/index.wasm")
+			and citxt.contains("if-no-files-found: error")
+		)
 	_assert(ci_ok, "CI 含测试与导出校验", "CI 内容不完整")
 	# 干净克隆可按文档生成构建：检查 docs/BUILD.md 与 Makefile 目标
 	_assert(FileAccess.file_exists("res://docs/BUILD.md"), "docs/BUILD.md 存在", "缺失")
@@ -1775,11 +1993,60 @@ func _test_spawn_clamp_and_caps() -> void:
 			break
 	if not out_of_bounds:
 		_log_pass("100 次 spawn_pos 均在 ARENA 边界内")
-	# 玩家移动边界
 	var player: Node = g.get("player") as Node
+	# 玩家贴近四角时，钳制后的生成点仍需保持安全距离。
+	var spawn_too_close: bool = false
+	for corner in [
+		Vector2(-arena + 20.0, -arena + 20.0),
+		Vector2(-arena + 20.0, arena - 20.0),
+		Vector2(arena - 20.0, -arena + 20.0),
+		Vector2(arena - 20.0, arena - 20.0),
+	]:
+		player.position = corner
+		for i in 25:
+			var corner_spawn: Vector2 = g._spawn_pos()
+			if corner_spawn.distance_to(player.position) < 359.9:
+				spawn_too_close = true
+				_log_fail("边角出生安全距离", "player=%s spawn=%s distance=%.2f" % [str(player.position), str(corner_spawn), corner_spawn.distance_to(player.position)])
+				break
+		if spawn_too_close:
+			break
+	if not spawn_too_close:
+		_log_pass("玩家贴近四角时出生点仍保持至少 360px")
+	# 自定义极小敌人上限时，特殊槽预留不能锁死普通刷怪。
+	var gd: GDScript = preload("res://scripts/game_data.gd")
+	var original_max_enemies: int = int(gd.get("max_enemies"))
+	gd.set("max_enemies", 1)
+	var one_slot_allows_regular: bool = bool(g._can_spawn_enemy("slime"))
+	gd.set("max_enemies", 2)
+	var two_slots_allow_regular: bool = bool(g._can_spawn_enemy("slime"))
+	gd.set("max_enemies", original_max_enemies)
+	_assert(one_slot_allows_regular and two_slots_allow_regular, "极小敌人上限仍可启动普通刷怪", "max=1:%s max=2:%s" % [str(one_slot_allows_regular), str(two_slots_allow_regular)])
+	# 玩家移动边界
 	player.position = Vector2(arena, arena)
 	player._move(0.016)
 	_assert(absf(player.position.x) <= arena - 19.9 and absf(player.position.y) <= arena - 19.9, "玩家位置被 clamp 在 ARENA 内", "pos=%s" % str(player.position))
+	# 寿命回收只能合并节点，不能吞掉尚未拾取的 XP。
+	g._spawn_pickup("gem", Vector2(1000.0, 1000.0), 11)
+	var lone_gem: Node = (g.get("pickups_node") as Node).get_child(0) as Node
+	g._expire_pickup(lone_gem)
+	_assert(lone_gem.get_parent() != null and int(lone_gem.get("value")) == 11, "最后一个到期宝石续期保留 XP", "parent=%s value=%s" % [str(lone_gem.get_parent()), str(lone_gem.get("value"))])
+	g._spawn_pickup("gem", Vector2(1100.0, 1000.0), 7)
+	g._expire_pickup(lone_gem)
+	var pickup_children: Array = (g.get("pickups_node") as Node).get_children()
+	var merged_xp: int = 0
+	for pickup in pickup_children:
+		merged_xp += int(pickup.get("value"))
+	_assert(pickup_children.size() == 1 and merged_xp == 18, "到期宝石合并后 XP 总量不变", "count=%d xp=%d" % [pickup_children.size(), merged_xp])
+	for i in 30:
+		g._spawn_pickup("heart", Vector2(1200.0 + i, 1000.0), 1)
+	var heart_count: int = 0
+	var heart_value: int = 0
+	for pickup in (g.get("pickups_node") as Node).get_children():
+		if str(pickup.get("kind")) == "heart":
+			heart_count += 1
+			heart_value += int(pickup.get("value"))
+	_assert(heart_count == 24 and heart_value == 30, "心脏节点上限 24 且治疗量合并", "count=%d value=%d" % [heart_count, heart_value])
 	g.queue_free()
 	await process_frame
 	await process_frame
@@ -1843,4 +2110,3 @@ func _print_summary() -> void:
 				print("  caps: enemies=%d pickups=%d nodes=%d avg_ms=%.3f p95=%.3f" % [r["enemies"], r["pickups"], r["total_nodes"], r["avg_ms"], p95])
 			else:
 				print("  %.0fs: enemies=%d pickups=%d nodes=%d avg_ms=%.3f p95=%.3f" % [r["elapsed"], r["enemies"], r["pickups"], r["total_nodes"], r["avg_ms"], p95])
-

@@ -15,6 +15,48 @@ static var fps_visible: bool = false
 static var vibrate_enabled: bool = true
 
 static var _loaded: bool = false
+static var _test_storage_path: String = ""
+
+
+static func get_storage_path() -> String:
+	return _test_storage_path if not _test_storage_path.is_empty() else PATH
+
+
+static func set_test_storage_path(path: String) -> bool:
+	if path.is_empty():
+		push_error("[Settings] 测试设置路径不能为空")
+		return false
+	if not path.begins_with("user://"):
+		push_error("[Settings] 测试设置路径必须位于 user://")
+		return false
+	var resolved_path: String = ProjectSettings.globalize_path(path).simplify_path()
+	var production_path: String = ProjectSettings.globalize_path(PATH).simplify_path()
+	if resolved_path == production_path:
+		push_error("[Settings] 测试设置路径不能指向生产设置")
+		return false
+	_test_storage_path = path
+	_reset_runtime_state()
+	return true
+
+
+static func reset_test_storage_path() -> void:
+	_test_storage_path = ""
+	_reset_runtime_state()
+
+
+static func _reset_runtime_state() -> void:
+	_loaded = false
+	_set_defaults()
+
+
+static func _set_defaults() -> void:
+	master_volume = 0.8
+	music_volume = 0.7
+	sfx_volume = 0.85
+	shake_enabled = true
+	flash_enabled = true
+	fps_visible = false
+	vibrate_enabled = true
 
 
 static func ensure_loaded() -> void:
@@ -25,22 +67,20 @@ static func ensure_loaded() -> void:
 
 
 static func reset_to_default() -> void:
-	master_volume = 0.8
-	music_volume = 0.7
-	sfx_volume = 0.85
-	shake_enabled = true
-	flash_enabled = true
-	fps_visible = false
-	vibrate_enabled = true
+	_set_defaults()
 	_apply_audio()
 	_save_internal()
 
 
 static func load_settings() -> void:
+	_set_defaults()
+	var storage_path: String = get_storage_path()
 	var cfg := ConfigFile.new()
-	var err: int = cfg.load(PATH)
+	var err: int = cfg.load(storage_path)
 	if err != OK:
 		# 首次启动或无文件，使用默认值并保存一次
+		if err != ERR_FILE_NOT_FOUND:
+			push_warning("[Settings] 损坏或无法读取 %s err=%d，使用默认值" % [storage_path, err])
 		_apply_audio()
 		_save_internal()
 		_loaded = true
@@ -63,7 +103,8 @@ static func save_settings() -> void:
 	_save_internal()
 
 
-static func _save_internal() -> void:
+static func _save_internal() -> bool:
+	var storage_path: String = get_storage_path()
 	var cfg := ConfigFile.new()
 	cfg.set_value("audio", "master_volume", master_volume)
 	cfg.set_value("audio", "music_volume", music_volume)
@@ -72,7 +113,11 @@ static func _save_internal() -> void:
 	cfg.set_value("game", "flash_enabled", flash_enabled)
 	cfg.set_value("display", "fps_visible", fps_visible)
 	cfg.set_value("input", "vibrate_enabled", vibrate_enabled)
-	cfg.save(PATH)
+	var err: int = cfg.save(storage_path)
+	if err != OK:
+		push_error("[Settings] 保存失败 %s err=%d" % [storage_path, err])
+		return false
+	return true
 
 
 static func set_master_volume(v: float) -> void:

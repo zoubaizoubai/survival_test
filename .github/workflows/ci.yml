@@ -28,9 +28,9 @@ jobs:
           godot --headless --path . --quit-after 2
           echo "headless load OK"
 
-      - name: Run headless tests (332 assertions)
+      - name: Run headless tests
         run: |
-          godot --headless --path . -s res://tests/run_tests.gd -- seed=1337
+          godot --headless --path . -s res://tests/run_tests.gd -- seed=1337 isolated=true
           echo "tests PASS"
 
       - name: Check export presets
@@ -42,10 +42,20 @@ jobs:
 
       - name: Export Web (release)
         run: |
-          mkdir -p build/web
-          godot --headless --path . --export-release Web build/web/index.html || echo "Web export skipped (templates may be missing in minimal image, but preset is valid)"
-          ls -lh build/web/ || true
-          test -f build/web/index.html && echo "Web export produced" || echo "Web export not produced (templates missing) - preset validation passed"
+          set -euo pipefail
+          make export-web GODOT_FALLBACK=godot
+          test -s build/web/index.html
+          test -s build/web/index.js
+          test -s build/web/index.wasm
+          test -s build/web/index.pck
+          test -s build/web/version.txt
+
+      - name: Export Linux (release)
+        run: |
+          set -euo pipefail
+          make export-linux GODOT_FALLBACK=godot
+          test -s build/linux/幸存者.x86_64
+          test -s build/linux/version.txt
 
       - name: Upload baseline artifact
         if: always()
@@ -56,9 +66,15 @@ jobs:
           if-no-files-found: warn
 
       - name: Upload web build (if produced)
-        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: web-build
           path: build/web/
-          if-no-files-found: warn
+          if-no-files-found: error
+
+      - name: Upload Linux build
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-build
+          path: build/linux/
+          if-no-files-found: error

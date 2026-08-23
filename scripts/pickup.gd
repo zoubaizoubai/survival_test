@@ -7,17 +7,49 @@ var magnet := false
 var vel := Vector2.ZERO
 var t := 0.0
 var collected := false
+var life := 60.0
 
 
 func _ready() -> void:
 	add_to_group("pickup")
-	t = randf() * TAU
 	# 若由对象池复用，可能已在组中，避免重复
 	if not is_in_group("pickup"):
 		add_to_group("pickup")
 
 
+func reset_for_spawn(
+	owner_game: Node2D,
+	pickup_kind: String,
+	pickup_value: int,
+	spawn_position: Vector2,
+	lifetime: float
+) -> void:
+	game = owner_game
+	kind = pickup_kind
+	value = maxi(pickup_value, 0)
+	magnet = false
+	vel = Vector2.ZERO
+	t = randf() * TAU
+	collected = false
+	life = maxf(lifetime, 0.1)
+	position = spawn_position
+	rotation = 0.0
+	scale = Vector2.ONE
+	modulate = Color.WHITE
+	self_modulate = Color.WHITE
+	visible = true
+	set_process(true)
+	queue_redraw()
+
+
 func _process(delta: float) -> void:
+	life -= delta
+	if life <= 0.0:
+		if game:
+			game._expire_pickup(self)
+		else:
+			queue_free()
+		return
 	t += delta
 	var pl: Node2D = game.player if game else get_tree().get_first_node_in_group("player")
 	if pl == null or pl.dead:
